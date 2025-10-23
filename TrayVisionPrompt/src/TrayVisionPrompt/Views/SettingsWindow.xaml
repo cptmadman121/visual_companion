@@ -1,0 +1,56 @@
+<Window x:Class="TrayVisionPrompt.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Einstellungen"
+        Width="420"
+        Height="520"
+        WindowStartupLocation="CenterOwner">
+  <ScrollViewer>
+    <StackPanel Margin="12">
+      <TextBlock Text="Globaler Hotkey" FontWeight="Bold" />
+      <TextBox x:Name="HotkeyBox" />
+
+      <TextBlock Text="Backend" FontWeight="Bold" Margin="0,12,0,0" />
+      <ComboBox x:Name="BackendCombo">
+        <ComboBoxItem Content="ollama" />
+        <ComboBoxItem Content="vllm" />
+        <ComboBoxItem Content="llamacpp" />
+      </ComboBox>
+
+      <TextBlock Text="Endpoint" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox x:Name="EndpointBox" />
+
+      <TextBlock Text="Modell" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox x:Name="ModelBox" />
+
+      <TextBlock Text="Timeout (ms)" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox x:Name="TimeoutBox" />
+
+      <TextBlock Text="Max Tokens" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox x:Name="MaxTokensBox" />
+
+      <TextBlock Text="Temperatur" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox x:Name="TemperatureBox" />
+
+      <CheckBox x:Name="VisionCheck" Content="Vision verwenden" Margin="0,12,0,0" />
+      <CheckBox x:Name="OcrCheck" Content="OCR-Fallback verwenden" />
+
+      <TextBlock Text="Proxy" FontWeight="Bold" Margin="0,12,0,0" />
+      <TextBox x:Name="ProxyBox" />
+
+      <TextBlock Text="Log-Level" FontWeight="Bold" Margin="0,12,0,0" />
+      <ComboBox x:Name="LogLevelCombo">
+        <ComboBoxItem Content="Trace" />
+        <ComboBoxItem Content="Debug" />
+        <ComboBoxItem Content="Info" />
+        <ComboBoxItem Content="Warning" />
+        <ComboBoxItem Content="Error" />
+      </ComboBox>
+
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+        <Button Content="Speichern" Width="100" Margin="6" Click="OnSave" />
+        <Button Content="Abbrechen" Width="100" Margin="6" Click="OnCancel" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

@@ -1,0 +1,39 @@
+<Window x:Class="TrayVisionPrompt.Views.InstructionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Instruktionen"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="12">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TextBlock Text="Aufgabe" FontWeight="Bold" />
+    <ComboBox x:Name="PresetCombo"
+              Grid.Row="1"
+              Margin="0,6,0,12"
+              Width="280"
+              IsEditable="False" />
+
+    <TextBlock Text="Prompt" Grid.Row="2" FontWeight="Bold" />
+    <TextBox x:Name="PromptBox"
+             Grid.Row="3"
+             Width="420"
+             Height="160"
+             TextWrapping="Wrap"
+             AcceptsReturn="True" />
+
+    <StackPanel Orientation="Horizontal"
+                Grid.Row="4"
+                Margin="0,12,0,0"
+                HorizontalAlignment="Right">
+      <Button Content="OK" Width="80" Margin="6" Click="OnOk" />
+      <Button Content="Abbrechen" Width="80" Margin="6" Click="OnCancel" />
+    </StackPanel>
+  </Grid>
+</Window>

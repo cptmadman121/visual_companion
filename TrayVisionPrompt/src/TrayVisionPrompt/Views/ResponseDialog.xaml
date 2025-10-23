@@ -1,0 +1,24 @@
+<Window x:Class="TrayVisionPrompt.Views.ResponseDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Antwort"
+        Width="520"
+        Height="360"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="CopyButton" Content="Kopieren" Width="100" Margin="6" Click="OnCopy" />
+      <Button x:Name="ReplaceButton" Content="In Zwischenablage ersetzen" Width="180" Margin="6" Click="OnReplace" />
+      <Button Content="Als Datei speichern" Width="160" Margin="6" Click="OnSave" />
+      <Button Content="Schließen" Width="100" Margin="6" Click="OnClose" />
+    </StackPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <TextBox x:Name="ResponseText"
+               TextWrapping="Wrap"
+               AcceptsReturn="True"
+               IsReadOnly="True"
+               VerticalScrollBarVisibility="Auto"
+               FontFamily="Consolas" />
+    </ScrollViewer>
+  </DockPanel>
+</Window>
