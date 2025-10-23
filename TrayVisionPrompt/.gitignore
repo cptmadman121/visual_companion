@@ -1,0 +1,20 @@
+# Build artifacts
+bin/
+obj/
+**/bin/
+**/obj/
+
+# VS Code
+.vscode/*.code-workspace
+
+# User-specific
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+
+# Packaging output
+dist/

@@ -1,0 +1,44 @@
+using System;
+using System.Windows;
+using TrayVisionPrompt.Infrastructure;
+
+namespace TrayVisionPrompt;
+
+public partial class App : Application
+{
+    private IServiceLocator? _serviceLocator;
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        try
+        {
+            _serviceLocator = new ServiceLocator();
+            _serviceLocator.Initialize();
+            _serviceLocator.Logger.LogInformation("TrayVisionPrompt starting up");
+
+            var shell = _serviceLocator.Resolve<Views.ShellWindow>();
+            MainWindow = shell;
+            shell.Show();
+            shell.Hide();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"TrayVisionPrompt konnte nicht gestartet werden: {ex.Message}",
+                "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(-1);
+        }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        if (_serviceLocator != null)
+        {
+            _serviceLocator.Logger.LogInformation("TrayVisionPrompt shutting down");
+            _serviceLocator.Dispose();
+        }
+
+        base.OnExit(e);
+    }
+}
