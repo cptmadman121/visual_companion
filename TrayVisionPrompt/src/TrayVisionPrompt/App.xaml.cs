@@ -1,10 +1,11 @@
 using System;
 using System.Windows;
+using Microsoft.Extensions.Logging;
 using TrayVisionPrompt.Infrastructure;
 
 namespace TrayVisionPrompt;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private IServiceLocator? _serviceLocator;
 
@@ -25,7 +26,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"TrayVisionPrompt konnte nicht gestartet werden: {ex.Message}",
+            System.Windows.MessageBox.Show($"TrayVisionPrompt konnte nicht gestartet werden: {ex.Message}",
                 "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(-1);
         }

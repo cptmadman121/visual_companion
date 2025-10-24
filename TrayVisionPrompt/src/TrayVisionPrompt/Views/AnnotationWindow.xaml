@@ -10,28 +10,31 @@
         Cursor="Cross"
         Title="Annotation">
   <Grid>
-    <Canvas x:Name="SelectionCanvas">
+    <Canvas x:Name="SelectionCanvas" Panel.ZIndex="1">
       <Rectangle x:Name="SelectionRectangle"
                  Stroke="Lime"
                  StrokeThickness="2"
                  Fill="#2200FF00"
                  Visibility="Collapsed" />
     </Canvas>
-    <InkCanvas x:Name="AnnotationInk"
+    <InkCanvas x:Name="AnnotationInk" Panel.ZIndex="0"
                Background="Transparent"
-               EditingMode="Ink"
-               DefaultDrawingAttributes="{x:Null}" />
-    <StackPanel Orientation="Horizontal"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Bottom"
-                Margin="0,0,0,40"
-                Background="#88000000"
-                Padding="12"
-                CornerRadius="8">
-      <Button Content="Bestätigen" Click="OnConfirm" />
-      <Button Content="Zurücksetzen" Click="OnReset" />
-      <Button Content="Abbrechen" Click="OnCancel" />
-      <Button Content="Undo" Click="OnUndo" />
-    </StackPanel>
+               EditingMode="Ink" />
+    <Border x:Name="Toolbar"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,40"
+            Background="#88000000"
+            Padding="12"
+            CornerRadius="8">
+      <StackPanel Orientation="Horizontal">
+        <Button Content="Bereich auswählen" Margin="0,0,8,0" Click="OnSelectMode" />
+        <Button Content="Bereich markieren" Margin="0,0,16,0" Click="OnDrawMode" />
+        <Button Content="Bestätigen" Margin="0,0,8,0" Click="OnConfirm" />
+        <Button Content="Zurücksetzen" Margin="0,0,8,0" Click="OnReset" />
+        <Button Content="Abbrechen" Click="OnCancel" />
+      </StackPanel>
+    </Border>
   </Grid>
+  
 </Window>

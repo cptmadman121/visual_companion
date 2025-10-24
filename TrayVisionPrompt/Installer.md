@@ -11,7 +11,27 @@
 3. Create a shortcut to `TrayVisionPrompt.exe` and place it in `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup` to auto-start with Windows.
 4. Launch the application once to generate the default configuration under `%APPDATA%\TrayVisionPrompt\config.json`.
 5. Adjust `config.json` to point to your local backend endpoint, model name, and desired hotkey.
-6. Optional: Grant the application permissions in your security suite to capture the screen and communicate with `http://127.0.0.1`.
+6. Optional: Grant the application permissions in your security suite to capture the screen and communicate with your Ollama endpoint (e.g., `http://127.0.0.1` or `http://192.168.201.166`).
+
+### Standard Ollama Configuration
+If your Ollama server runs at `http://192.168.201.166:11434/`, use the following `config.json` example (note the required `/v1/chat/completions` path):
+
+```json
+{
+  "hotkey": "Win+Shift+Q",
+  "backend": "ollama",
+  "endpoint": "http://192.168.201.166:11434/v1/chat/completions",
+  "model": "llava:latest",
+  "requestTimeoutMs": 45000,
+  "maxTokens": 1024,
+  "temperature": 0.2,
+  "useVision": true,
+  "useOcrFallback": true,
+  "proxy": null,
+  "telemetry": false,
+  "logLevel": "Info"
+}
+```
 
 ## Updating
 - Replace the installation folder contents with the new release build.

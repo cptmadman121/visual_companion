@@ -22,7 +22,7 @@ public partial class ResponseDialog : Window
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        Clipboard.SetText(ResponseText.Text);
+        System.Windows.Clipboard.SetText(ResponseText.Text);
     }
 
     private void OnReplace(object sender, RoutedEventArgs e)
@@ -32,13 +32,13 @@ public partial class ResponseDialog : Window
             return;
         }
 
-        Clipboard.Clear();
-        Clipboard.SetText(ResponseText.Text);
+        System.Windows.Clipboard.Clear();
+        System.Windows.Clipboard.SetText(ResponseText.Text);
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog
+        var dialog = new Microsoft.Win32.SaveFileDialog
         {
             Filter = "Textdatei (*.txt)|*.txt|Markdown (*.md)|*.md",
             FileName = $"TrayVisionPrompt_{DateTime.Now:yyyyMMdd_HHmmss}.txt"

@@ -4,7 +4,7 @@
         Title="TrayVisionPrompt"
         Width="400"
         Height="300"
-        WindowStyle="ToolWindow"
+        WindowStyle="None"
         ShowInTaskbar="False"
         Visibility="Hidden"
         AllowsTransparency="True"

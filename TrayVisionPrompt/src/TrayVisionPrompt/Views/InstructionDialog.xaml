@@ -6,30 +6,39 @@
         WindowStartupLocation="CenterOwner">
   <Grid Margin="12">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" />
-      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" /> <!-- Preview label -->
+      <RowDefinition Height="Auto" /> <!-- Preview image -->
+      <RowDefinition Height="Auto" /> <!-- Aufgabe label -->
+      <RowDefinition Height="Auto" /> <!-- Preset combo -->
+      <RowDefinition Height="Auto" /> <!-- Prompt label -->
+      <RowDefinition Height="*" />   <!-- Prompt box -->
+      <RowDefinition Height="Auto" /> <!-- Buttons -->
     </Grid.RowDefinitions>
 
-    <TextBlock Text="Aufgabe" FontWeight="Bold" />
+    <TextBlock Text="Vorschau" FontWeight="Bold" />
+    <Border Grid.Row="1" Margin="0,6,0,12" BorderBrush="#888" BorderThickness="1">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxWidth="500" MaxHeight="300">
+        <Image x:Name="PreviewImage" Stretch="Uniform" />
+      </ScrollViewer>
+    </Border>
+
+    <TextBlock Text="Aufgabe" Grid.Row="2" FontWeight="Bold" />
     <ComboBox x:Name="PresetCombo"
-              Grid.Row="1"
+              Grid.Row="3"
               Margin="0,6,0,12"
               Width="280"
               IsEditable="False" />
 
-    <TextBlock Text="Prompt" Grid.Row="2" FontWeight="Bold" />
+    <TextBlock Text="Prompt" Grid.Row="4" FontWeight="Bold" />
     <TextBox x:Name="PromptBox"
-             Grid.Row="3"
+             Grid.Row="5"
              Width="420"
              Height="160"
              TextWrapping="Wrap"
              AcceptsReturn="True" />
 
     <StackPanel Orientation="Horizontal"
-                Grid.Row="4"
+                Grid.Row="6"
                 Margin="0,12,0,0"
                 HorizontalAlignment="Right">
       <Button Content="OK" Width="80" Margin="6" Click="OnOk" />

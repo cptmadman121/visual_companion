@@ -7,14 +7,17 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using TrayVisionPrompt.Models;
 using TrayVisionPrompt.Services;
+using MessageBox = System.Windows.MessageBox;
 
 namespace TrayVisionPrompt.Views;
 
 public partial class AnnotationWindow : Window
 {
-    private Point _startPoint;
+    private System.Windows.Point _startPoint;
     private bool _isSelecting;
     private readonly ScreenshotService _screenshotService;
+    private enum AnnotationMode { Select, Draw }
+    private AnnotationMode _mode = AnnotationMode.Select;
 
     public CaptureResult? CaptureResult { get; private set; }
 
@@ -30,16 +33,21 @@ public partial class AnnotationWindow : Window
             FitToCurve = true
         };
 
-        MouseLeftButtonDown += OnMouseLeftButtonDown;
-        MouseMove += OnMouseMove;
-        MouseLeftButtonUp += OnMouseLeftButtonUp;
+        PreviewMouseLeftButtonDown += OnMouseLeftButtonDown;
+        PreviewMouseMove += OnMouseMove;
+        PreviewMouseLeftButtonUp += OnMouseLeftButtonUp;
         KeyDown += OnKeyDown;
+        SetSelectMode();
     }
 
-    private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnMouseLeftButtonDown(object? sender, MouseButtonEventArgs e)
     {
+        // Ignore clicks on toolbar
+        if (IsFromToolbar(e.OriginalSource)) return;
+        if (_mode != AnnotationMode.Select) return;
         _startPoint = e.GetPosition(this);
         _isSelecting = true;
+        AnnotationInk.IsHitTestVisible = false;
         SelectionRectangle.Visibility = Visibility.Visible;
         Canvas.SetLeft(SelectionRectangle, _startPoint.X);
         Canvas.SetTop(SelectionRectangle, _startPoint.Y);
@@ -47,9 +55,10 @@ public partial class AnnotationWindow : Window
         SelectionRectangle.Height = 0;
     }
 
-    private void OnMouseMove(object sender, MouseEventArgs e)
+    private void OnMouseMove(object? sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!_isSelecting) return;
+        if (IsFromToolbar(e.OriginalSource)) return;
+        if (!_isSelecting || _mode != AnnotationMode.Select) return;
         var position = e.GetPosition(this);
         var x = Math.Min(position.X, _startPoint.X);
         var y = Math.Min(position.Y, _startPoint.Y);
@@ -62,59 +71,102 @@ public partial class AnnotationWindow : Window
         SelectionRectangle.Height = height;
     }
 
-    private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void OnMouseLeftButtonUp(object? sender, MouseButtonEventArgs e)
     {
-        if (!_isSelecting) return;
+        if (IsFromToolbar(e.OriginalSource)) return;
+        if (!_isSelecting || _mode != AnnotationMode.Select) return;
         _isSelecting = false;
+        AnnotationInk.IsHitTestVisible = true;
     }
 
-    private void OnConfirm(object sender, RoutedEventArgs e)
+    private void OnConfirm(object? sender, RoutedEventArgs e)
     {
-        if (SelectionRectangle.Visibility != Visibility.Visible || SelectionRectangle.Width < 2 || SelectionRectangle.Height < 2)
+        var dpiScale = VisualTreeHelper.GetDpi(this);
+        string base64;
+        int width;
+        int height;
+        Rect resultBounds;
+
+        if (SelectionRectangle.Visibility == Visibility.Visible && SelectionRectangle.Width >= 2 && SelectionRectangle.Height >= 2)
         {
-            MessageBox.Show("Bitte einen Ausschnitt wählen.", "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Information);
+            var bounds = new Rect(Canvas.GetLeft(SelectionRectangle), Canvas.GetTop(SelectionRectangle), SelectionRectangle.Width, SelectionRectangle.Height);
+            var scaledBounds = new Rect(bounds.X * dpiScale.DpiScaleX, bounds.Y * dpiScale.DpiScaleY, bounds.Width * dpiScale.DpiScaleX, bounds.Height * dpiScale.DpiScaleY);
+            base64 = _screenshotService.CaptureRegion(scaledBounds, dpiScale.DpiScaleX);
+            width = Math.Max(1, (int)Math.Round(scaledBounds.Width));
+            height = Math.Max(1, (int)Math.Round(scaledBounds.Height));
+            resultBounds = scaledBounds;
+            var annotatedBase64Sel = AnnotationRenderer.Render(base64, AnnotationInk.Strokes, width, height, scaledBounds.X, scaledBounds.Y);
+            SetResultAndClose(resultBounds, annotatedBase64Sel, dpiScale.DpiScaleX);
             return;
         }
+        else
+        {
+            var vs = System.Windows.Forms.SystemInformation.VirtualScreen;
+            base64 = _screenshotService.CaptureFullScreen();
+            width = Math.Max(1, vs.Width);
+            height = Math.Max(1, vs.Height);
+            resultBounds = new Rect(0, 0, width, height);
+        }
 
-        var dpiScale = VisualTreeHelper.GetDpi(this);
-        var bounds = new Rect(Canvas.GetLeft(SelectionRectangle), Canvas.GetTop(SelectionRectangle), SelectionRectangle.Width, SelectionRectangle.Height);
-        var scaledBounds = new Rect(bounds.X * dpiScale.DpiScaleX, bounds.Y * dpiScale.DpiScaleY, bounds.Width * dpiScale.DpiScaleX, bounds.Height * dpiScale.DpiScaleY);
+        var annotatedBase64 = AnnotationRenderer.Render(base64, AnnotationInk.Strokes, width, height, 0, 0);
+        SetResultAndClose(resultBounds, annotatedBase64, dpiScale.DpiScaleX);
+    }
 
-        var base64 = _screenshotService.CaptureRegion(scaledBounds, dpiScale.DpiScaleX);
-        var width = Math.Max(1, (int)Math.Round(scaledBounds.Width));
-        var height = Math.Max(1, (int)Math.Round(scaledBounds.Height));
-        var annotatedBase64 = AnnotationRenderer.Render(base64, AnnotationInk.Strokes, width, height);
-
+    private void SetResultAndClose(Rect bounds, string annotatedBase64, double dpiScaleX)
+    {
         CaptureResult = new CaptureResult
         {
-            Bounds = scaledBounds,
+            Bounds = bounds,
             ImageBase64 = annotatedBase64,
-            DisplayScaling = dpiScale.DpiScaleX
+            DisplayScaling = dpiScaleX
         };
-
         DialogResult = true;
     }
 
-    private void OnReset(object sender, RoutedEventArgs e)
+    private void OnReset(object? sender, RoutedEventArgs e)
     {
         SelectionRectangle.Visibility = Visibility.Collapsed;
+        SelectionRectangle.Width = 0;
+        SelectionRectangle.Height = 0;
         AnnotationInk.Strokes.Clear();
+        SetSelectMode();
     }
 
-    private void OnCancel(object sender, RoutedEventArgs e)
+    private void OnCancel(object? sender, RoutedEventArgs e)
     {
         DialogResult = false;
     }
 
-    private void OnUndo(object sender, RoutedEventArgs e)
+    private void OnSelectMode(object? sender, RoutedEventArgs e) => SetSelectMode();
+    private void OnDrawMode(object? sender, RoutedEventArgs e) => SetDrawMode();
+
+    private void SetSelectMode()
     {
-        if (AnnotationInk.Strokes.Count > 0)
-        {
-            AnnotationInk.Strokes.RemoveAt(AnnotationInk.Strokes.Count - 1);
-        }
+        _mode = AnnotationMode.Select;
+        AnnotationInk.IsHitTestVisible = false;
+        AnnotationInk.EditingMode = InkCanvasEditingMode.None;
     }
 
-    private void OnKeyDown(object sender, KeyEventArgs e)
+    private void SetDrawMode()
+    {
+        _mode = AnnotationMode.Draw;
+        AnnotationInk.IsHitTestVisible = true;
+        AnnotationInk.EditingMode = InkCanvasEditingMode.Ink;
+    }
+
+    private bool IsFromToolbar(object source)
+    {
+        if (Toolbar == null) return false;
+        if (source is not DependencyObject dobj) return false;
+        while (dobj != null)
+        {
+            if (ReferenceEquals(dobj, Toolbar)) return true;
+            dobj = VisualTreeHelper.GetParent(dobj);
+        }
+        return false;
+    }
+
+    private void OnKeyDown(object? sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
