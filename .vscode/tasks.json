@@ -1,0 +1,94 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dotnet: restore",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "restore",
+        "TrayVisionPrompt/TrayVisionPrompt.sln"
+      ],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "build",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "TrayVisionPrompt/TrayVisionPrompt.sln",
+        "-c",
+        "Debug",
+        "/nologo"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn": ["dotnet: restore"],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "build:release",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "TrayVisionPrompt/TrayVisionPrompt.sln",
+        "-c",
+        "Release",
+        "/nologo"
+      ],
+      "dependsOn": ["dotnet: restore"],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "TrayVisionPrompt/TrayVisionPrompt.sln",
+        "-c",
+        "Debug",
+        "--no-build"
+      ],
+      "dependsOn": ["build"],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "publish:win-x64",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "publish",
+        "TrayVisionPrompt/src/TrayVisionPrompt/TrayVisionPrompt.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "win-x64",
+        "--self-contained",
+        "false",
+        "-p:PublishSingleFile=true"
+      ],
+      "dependsOn": ["build:release"],
+      "problemMatcher": ["$msCompile"]
+    },
+    {
+      "label": "package",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "TrayVisionPrompt/tools/package.ps1"
+      ],
+      "dependsOn": ["build:release"],
+      "problemMatcher": ["$msCompile"]
+    }
+  ]
+}
+

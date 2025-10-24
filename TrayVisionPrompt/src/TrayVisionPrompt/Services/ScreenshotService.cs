@@ -31,4 +31,18 @@ public class ScreenshotService
         _logger.LogInformation("Captured screenshot of size {Width}x{Height}", rect.Width, rect.Height);
         return base64;
     }
+
+    public string CaptureFullScreen()
+    {
+        var bounds = System.Windows.Forms.SystemInformation.VirtualScreen;
+        using var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, new System.Drawing.Size(bounds.Width, bounds.Height), CopyPixelOperation.SourceCopy);
+
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, ImageFormat.Png);
+        var base64 = Convert.ToBase64String(stream.ToArray());
+        _logger.LogInformation("Captured full screen of size {Width}x{Height}", bounds.Width, bounds.Height);
+        return base64;
+    }
 }

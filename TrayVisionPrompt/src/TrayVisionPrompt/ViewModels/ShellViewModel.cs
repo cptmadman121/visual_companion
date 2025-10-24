@@ -43,7 +43,7 @@ public partial class ShellViewModel : ObservableObject
         _trayIconService.SettingsRequested += (_, _) => OpenSettings();
         _trayIconService.CopyLastResponseRequested += (_, _) => CopyLastResponse();
         _trayIconService.OpenLogsRequested += (_, _) => OpenLogs();
-        _trayIconService.ExitRequested += (_, _) => Application.Current.Shutdown();
+        _trayIconService.ExitRequested += (_, _) => System.Windows.Application.Current.Shutdown();
 
         RegisterHotkey();
     }
@@ -54,7 +54,7 @@ public partial class ShellViewModel : ObservableObject
         if (!_hotkeyService.TryRegister(config.Hotkey))
         {
             _logger.LogWarning("Unable to register hotkey {Hotkey}.", config.Hotkey);
-            MessageBox.Show($"Der Hotkey {config.Hotkey} konnte nicht registriert werden.",
+            System.Windows.MessageBox.Show($"Der Hotkey {config.Hotkey} konnte nicht registriert werden.",
                 "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         else
@@ -72,7 +72,7 @@ public partial class ShellViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Capture workflow failed");
-            MessageBox.Show($"Der Capture-Workflow ist fehlgeschlagen: {ex.Message}",
+            System.Windows.MessageBox.Show($"Der Capture-Workflow ist fehlgeschlagen: {ex.Message}",
                 "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -86,7 +86,7 @@ public partial class ShellViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Backend test failed");
-            MessageBox.Show($"Backend-Test fehlgeschlagen: {ex.Message}",
+            System.Windows.MessageBox.Show($"Backend-Test fehlgeschlagen: {ex.Message}",
                 "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

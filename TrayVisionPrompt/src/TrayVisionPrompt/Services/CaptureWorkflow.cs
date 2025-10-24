@@ -82,7 +82,7 @@ public class CaptureWorkflow
             TimestampUtc = DateTime.UtcNow,
             DisplayScaling = captureResult.DisplayScaling,
             UseVision = configuration.UseVision,
-            Metadata = new()
+            Metadata = new System.Collections.Generic.Dictionary<string, string>()
             {
                 ["Selection"] = captureResult.Bounds.ToString(),
                 ["Preset"] = instruction.SelectedPreset ?? "custom"

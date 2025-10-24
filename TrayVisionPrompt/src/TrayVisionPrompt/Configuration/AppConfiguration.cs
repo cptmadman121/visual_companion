@@ -11,7 +11,7 @@ public class AppConfiguration
     public string Backend { get; set; } = "ollama";
 
     [JsonPropertyName("endpoint")]
-    public string Endpoint { get; set; } = "http://127.0.0.1:11434/v1/chat/completions";
+    public string Endpoint { get; set; } = "http://192.168.201.166:11434/v1/chat/completions";
 
     [JsonPropertyName("model")]
     public string Model { get; set; } = "llava:latest";

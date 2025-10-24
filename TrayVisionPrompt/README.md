@@ -47,7 +47,7 @@ Beim ersten Start wird `%APPDATA%\TrayVisionPrompt\config.json` erzeugt. Beispie
 {
   "hotkey": "Win+Shift+Q",
   "backend": "ollama",
-  "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
+  "endpoint": "http://192.168.201.166:11434/v1/chat/completions",
   "model": "llava:latest",
   "requestTimeoutMs": 45000,
   "maxTokens": 1024,

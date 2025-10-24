@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using Application = System.Windows.Application;
 
 namespace TrayVisionPrompt.Services;
 
