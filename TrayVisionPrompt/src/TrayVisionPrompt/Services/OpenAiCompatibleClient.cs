@@ -38,7 +38,16 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
         using var cts = new System.Threading.CancellationTokenSource(_configuration.RequestTimeoutMs);
         var start = DateTime.UtcNow;
         var response = await _httpClient.SendAsync(httpRequest, cts.Token);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            string errorBody = string.Empty;
+            try
+            {
+                errorBody = await response.Content.ReadAsStringAsync(cts.Token);
+            }
+            catch { /* ignore */ }
+            throw new HttpRequestException($"Request failed {(int)response.StatusCode} {response.ReasonPhrase}: {errorBody}");
+        }
         var document = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cts.Token), cancellationToken: cts.Token);
 
         var text = ParseResponse(document);

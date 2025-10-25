@@ -3,7 +3,7 @@ using TrayVisionPrompt.Configuration;
 using TrayVisionPrompt.Services;
 using Xunit;
 
-namespace TrayVisionPrompt.Tests;
+namespace TvPrompt.Tests;
 
 public class OllmClientFactoryTests
 {

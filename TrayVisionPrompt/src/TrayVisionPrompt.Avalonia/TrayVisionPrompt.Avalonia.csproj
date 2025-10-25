@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TrayVisionPrompt.Avalonia</AssemblyName>
+    <RootNamespace>TrayVisionPrompt.Avalonia</RootNamespace>
+    <AvaloniaUseCompiledBindings>true</AvaloniaUseCompiledBindings>
+    <AvaloniaAnalyzeXaml>true</AvaloniaAnalyzeXaml>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.0" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.2.0" Condition=" '$(Configuration)' == 'Debug' " />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.6" />
+  </ItemGroup>
+
+  <!-- Link the shared AppConfiguration source from the core project to avoid duplication -->
+  <ItemGroup>
+    <Compile Include="..\TrayVisionPrompt\Configuration\AppConfiguration.cs" Link="Configuration\AppConfiguration.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

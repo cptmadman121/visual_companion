@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using TrayVisionPrompt.Configuration;
 using Xunit;
 
-namespace TrayVisionPrompt.Tests;
+namespace TvPrompt.Tests;
 
 public class ConfigurationManagerTests
 {

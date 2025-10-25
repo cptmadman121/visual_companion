@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="TrayVisionPrompt.Avalonia.Views.SettingsView">
+  <ScrollViewer>
+    <StackPanel Spacing="12" Margin="8">
+      <TextBlock Classes="h1" Text="Settings"/>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption" Text="Global Hotkey"/>
+          <TextBox Watermark="Ctrl+Shift+Space" Text="{Binding Hotkey, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Backend"/>
+          <ComboBox SelectedItem="{Binding Backend, Mode=TwoWay}">
+            <ComboBoxItem>ollama</ComboBoxItem>
+            <ComboBoxItem>vllm</ComboBoxItem>
+            <ComboBoxItem>llamacpp</ComboBoxItem>
+          </ComboBox>
+          <TextBlock Classes="caption" Text="Endpoint"/>
+          <TextBox Text="{Binding Endpoint, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Model"/>
+          <TextBox Text="{Binding Model, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Timeout (ms)"/>
+          <TextBox Text="{Binding TimeoutMs, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Max Tokens"/>
+          <TextBox Text="{Binding MaxTokens, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Temperature"/>
+          <TextBox Text="{Binding Temperature, Mode=TwoWay}"/>
+          <CheckBox Content="Use Vision" IsChecked="{Binding UseVision, Mode=TwoWay}" />
+          <CheckBox Content="OCR Fallback" IsChecked="{Binding UseOcrFallback, Mode=TwoWay}" />
+          <TextBlock Classes="caption" Text="Proxy"/>
+          <TextBox Text="{Binding Proxy, Mode=TwoWay}"/>
+
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="Test Backend" Click="OnTest"/>
+            <Button Content="Cancel" Click="OnCancel"/>
+            <Button Classes="primary" Content="Save" Click="OnSave"/>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,102 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:TrayVisionPrompt.Avalonia.ViewModels"
+        xmlns:views="clr-namespace:TrayVisionPrompt.Avalonia.Views"
+        x:Class="TrayVisionPrompt.Avalonia.Views.MainWindow"
+        Width="980" Height="680"
+        TransparencyLevelHint="AcrylicBlur, Blur"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="32"
+        ExtendClientAreaChromeHints="NoChrome"
+        SystemDecorations="None"
+        Background="{StaticResource BrushSurface}"
+        Title="TrayVisionPrompt">
+  <Design.DataContext>
+    <vm:MainViewModel />
+  </Design.DataContext>
+
+  <Border Classes="card" Margin="16">
+    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
+      <!-- Title Bar -->
+      <Grid ColumnDefinitions="Auto,*,Auto" Height="48">
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Path Data="M12,2 L2,7 L12,12 L22,7 Z" Fill="{StaticResource BrushBrandPrimary}" Width="16" Height="16" Margin="8,0"/>
+          <TextBlock Classes="h2" Text="TrayVisionPrompt"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+          <Button Content="Settings" Click="OnOpenSettings"/>
+          <Button Classes="primary" Content="New Session" Click="OnNewSession"/>
+          <Button Content="×" Width="36" Click="OnClose" ToolTip.Tip="Close"/>
+        </StackPanel>
+      </Grid>
+
+      <!-- Content -->
+      <Grid Grid.Row="1" ColumnDefinitions="2*,3*" RowDefinitions="Auto,*" Margin="0,8,0,8">
+        <!-- Left Column: Prompt + Options -->
+        <StackPanel Spacing="12" Margin="8,0,8,0">
+          <TextBlock Classes="h1" Text="Ask anything"/>
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="caption" Text="Prompt"/>
+              <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="140" Watermark="Type your prompt..." Text="{Binding Prompt, Mode=TwoWay}"/>
+
+              <Expander Header="Options" IsExpanded="False">
+                <StackPanel Spacing="8">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ComboBox Width="160" SelectedItem="{Binding Backend, Mode=TwoWay}">
+                      <ComboBoxItem>ollama</ComboBoxItem>
+                      <ComboBoxItem>vllm</ComboBoxItem>
+                      <ComboBoxItem>llamacpp</ComboBoxItem>
+                    </ComboBox>
+                    <TextBox Watermark="Model" Width="160" Text="{Binding Model, Mode=TwoWay}"/>
+                  </StackPanel>
+                  <TextBox Watermark="Endpoint" Text="{Binding Endpoint, Mode=TwoWay}"/>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox Watermark="Max Tokens" Width="120" Text="{Binding MaxTokens, Mode=TwoWay}"/>
+                    <TextBox Watermark="Temperature" Width="120" Text="{Binding Temperature, Mode=TwoWay}"/>
+                  </StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <CheckBox Content="Vision" IsChecked="{Binding UseVision, Mode=TwoWay}"/>
+                    <CheckBox Content="OCR Fallback" IsChecked="{Binding UseOcrFallback, Mode=TwoWay}"/>
+                  </StackPanel>
+                </StackPanel>
+              </Expander>
+
+              <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Content="Capture" Click="OnCapture"/>
+                <Button Classes="primary" Content="Send" Click="OnSend"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Right Column: Conversation -->
+        <Border Grid.Column="1" Classes="card">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Classes="h1" Margin="0,0,0,8" Text="Conversation"/>
+            <ScrollViewer Grid.Row="1">
+              <ItemsControl ItemsSource="{Binding Messages}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Margin="0,8" Background="#16161D" CornerRadius="10" Padding="12">
+                      <TextBlock TextWrapping="Wrap" Text="{Binding}"/>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </Border>
+      </Grid>
+
+      <!-- Footer -->
+      <Grid Grid.Row="2">
+        <TextBlock Classes="caption" HorizontalAlignment="Right" Text="Press Ctrl+Shift+Space to open"/>
+      </Grid>
+    </Grid>
+  </Border>
+
+  <!-- Simple, robust layout; column content stacks gracefully on narrow widths -->
+</Window>
