@@ -43,7 +43,12 @@ public partial class ShellViewModel : ObservableObject
         _trayIconService.SettingsRequested += (_, _) => OpenSettings();
         _trayIconService.CopyLastResponseRequested += (_, _) => CopyLastResponse();
         _trayIconService.OpenLogsRequested += (_, _) => OpenLogs();
-        _trayIconService.ExitRequested += (_, _) => System.Windows.Application.Current.Shutdown();
+        _trayIconService.ExitRequested += (_, _) =>
+        {
+            var app = System.Windows.Application.Current;
+            app.Properties["IsShuttingDown"] = true;
+            app.Shutdown();
+        };
 
         RegisterHotkey();
     }

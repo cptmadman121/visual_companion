@@ -21,6 +21,14 @@ public partial class ShellWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        var app = System.Windows.Application.Current;
+        var isShuttingDown = app.Properties.Contains("IsShuttingDown") && app.Properties["IsShuttingDown"] is bool b && b;
+        if (isShuttingDown)
+        {
+            // allow real shutdown
+            return;
+        }
+
         e.Cancel = true;
         Hide();
     }

@@ -1,0 +1,15 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:TrayVisionPrompt.Avalonia.ViewModels"
+        xmlns:views="clr-namespace:TrayVisionPrompt.Avalonia.Views"
+        x:Class="TrayVisionPrompt.Avalonia.Views.SettingsWindow"
+        Width="560" Height="640" Title="Settings"
+        WindowStartupLocation="CenterOwner">
+  <Design.DataContext>
+    <vm:SettingsViewModel />
+  </Design.DataContext>
+  <Border Classes="card" Margin="16">
+    <views:SettingsView />
+  </Border>
+</Window>
+

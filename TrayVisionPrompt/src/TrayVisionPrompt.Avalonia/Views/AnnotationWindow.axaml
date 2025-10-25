@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="TrayVisionPrompt.Avalonia.Views.AnnotationWindow"
+        SystemDecorations="None"
+        TransparencyLevelHint="Blur"
+        Background="#66000000" Topmost="True"
+        ShowInTaskbar="False" WindowState="Maximized"
+        Title="Annotation">
+  <Grid>
+    <Canvas x:Name="SelectionCanvas" ZIndex="1">
+      <Rectangle x:Name="SelectionRectangle"
+                 Stroke="{StaticResource BrushBrandAccent}"
+                 StrokeThickness="2"
+                 Fill="#2200FF00"
+                 IsVisible="False"/>
+    </Canvas>
+
+    <Border x:Name="Toolbar" ZIndex="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,40" Background="#88000000" Padding="12" CornerRadius="8">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Select" Click="OnSelectMode"/>
+        <Button Content="Draw" Click="OnDrawMode"/>
+        <Button Classes="primary" Content="Confirm" Click="OnConfirm"/>
+        <Button Content="Reset" Click="OnReset"/>
+        <Button Content="Cancel" Click="OnCancel"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
