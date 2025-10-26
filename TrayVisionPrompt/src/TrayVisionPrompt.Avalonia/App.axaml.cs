@@ -87,7 +87,7 @@ public partial class App : global::Avalonia.Application
 
             if (annot.CapturedImageBase64 is string img && !string.IsNullOrWhiteSpace(img))
             {
-                var ask = new InstructionDialog { Instruction = "Describe the selected region succinctly." };
+                var ask = new InstructionDialog { Instruction = string.IsNullOrWhiteSpace(_store.Current.CaptureInstruction) ? "Describe the selected region succinctly." : _store.Current.CaptureInstruction };
                 ask.SetThumbnail(img);
                 await ask.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
                 if (!ask.Confirmed) return;
@@ -149,7 +149,8 @@ public partial class App : global::Avalonia.Application
             try
             {
                 using var llm = new LlmService();
-                var systemPrompt = ComposeSystemPrompt(ProofreadPrompt);
+                var extra = string.IsNullOrWhiteSpace(_store.Current.ProofreadPrompt) ? ProofreadPrompt : _store.Current.ProofreadPrompt;
+                var systemPrompt = ComposeSystemPrompt(extra);
                 var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
                 if (string.IsNullOrWhiteSpace(response))
                 {
@@ -187,7 +188,8 @@ public partial class App : global::Avalonia.Application
             try
             {
                 using var llm = new LlmService();
-                var systemPrompt = ComposeSystemPrompt(TranslatePrompt);
+                var extra = string.IsNullOrWhiteSpace(_store.Current.TranslatePrompt) ? TranslatePrompt : _store.Current.TranslatePrompt;
+                var systemPrompt = ComposeSystemPrompt(extra);
                 var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
                 if (string.IsNullOrWhiteSpace(response))
                 {
@@ -252,7 +254,9 @@ public partial class App : global::Avalonia.Application
             try
             {
                 using var llm = new LlmService();
-                var systemPrompt = ComposeSystemPrompt(mode == TextWorkflowMode.Proofread ? ProofreadPrompt : TranslatePrompt);
+                var proof = _store.Current.ProofreadPrompt;
+                var transl = _store.Current.TranslatePrompt;
+                var systemPrompt = ComposeSystemPrompt(mode == TextWorkflowMode.Proofread ? proof : transl);
                 var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
                 if (string.IsNullOrWhiteSpace(response))
                 {

@@ -51,4 +51,14 @@ public class AppConfiguration
 
     [JsonPropertyName("logLevel")]
     public string LogLevel { get; set; } = "Info";
+
+    // Prompt customization
+    [JsonPropertyName("captureInstruction")]
+    public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";
+
+    [JsonPropertyName("proofreadPrompt")]
+    public string ProofreadPrompt { get; set; } = "Proofread and improve grammar, spelling, and clarity. Preserve tone and meaning. Return only the corrected text. Keep formatting, newlines, tabs etc. exactly as in the original text.";
+
+    [JsonPropertyName("translatePrompt")]
+    public string TranslatePrompt { get; set; } = "If the text is english, translate it to German. If the text is German, translate it to English. All while preserving meaning, tone, and formatting. Return only the translation.";
 }
