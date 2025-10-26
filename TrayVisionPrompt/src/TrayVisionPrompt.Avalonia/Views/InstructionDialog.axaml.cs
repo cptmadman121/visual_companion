@@ -5,6 +5,7 @@ using Avalonia.Media.Imaging;
 using System;
 using System.IO;
 using TrayVisionPrompt.Avalonia.Configuration;
+using Avalonia.Threading;
 using TrayVisionPrompt.Avalonia.Services;
 
 namespace TrayVisionPrompt.Avalonia.Views;
@@ -31,6 +32,20 @@ public partial class InstructionDialog : Window
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        // Ensure the prompt textbox receives focus and caret at end
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_instructionBox is not null)
+            {
+                _instructionBox.Focus();
+                _instructionBox.CaretIndex = _instructionBox.Text?.Length ?? 0;
+            }
+        });
+    }
 
     public void OnCancel(object? sender, RoutedEventArgs e)
         => Close();
