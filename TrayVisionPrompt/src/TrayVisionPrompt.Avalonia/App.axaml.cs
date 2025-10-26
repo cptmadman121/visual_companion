@@ -37,10 +37,12 @@ public partial class App : global::Avalonia.Application
             // Keep app alive with a hidden window; UI opens on-demand via tray/hotkey
             var hidden = new Window
             {
-                Width = 0,
-                Height = 0,
+                Width = 1,
+                Height = 1,
                 ShowInTaskbar = false,
-                SystemDecorations = SystemDecorations.None
+                SystemDecorations = SystemDecorations.None,
+                Opacity = 0,
+                WindowState = WindowState.Minimized
             };
             desktop.MainWindow = hidden;
             _hiddenWindow = hidden;
@@ -54,8 +56,8 @@ public partial class App : global::Avalonia.Application
             _tray.Initialize();
             _tray.OpenRequested += (_, _) => ShowMainWindow();
             _tray.CaptureRequested += async (_, _) => await StartCaptureAsync();
-            _tray.ProofreadRequested += async (_, _) => await StartTextWorkflowAsync(TextWorkflowMode.Proofread);
-            _tray.TranslateRequested += async (_, _) => await StartTextWorkflowAsync(TextWorkflowMode.Translate);
+            _tray.ProofreadRequested += async (_, _) => await StartProofreadSilentFlow();
+            _tray.TranslateRequested += async (_, _) => await StartTranslateSilentFlow();
             _tray.SettingsRequested += (_, _) => ShowSettings();
             _tray.TestRequested += async (_, _) => await TestBackendAsync();
             _tray.ExitRequested += (_, _) => desktop.Shutdown();
@@ -133,6 +135,82 @@ public partial class App : global::Avalonia.Application
         });
     }
 
+    private async System.Threading.Tasks.Task StartProofreadSilentFlow()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var capture = await _textService.CaptureAsync();
+            if (string.IsNullOrWhiteSpace(capture.Text))
+            {
+                await ShowMessageAsync("No text selection or clipboard text found.");
+                return;
+            }
+
+            try
+            {
+                using var llm = new LlmService();
+                var systemPrompt = ComposeSystemPrompt(ProofreadPrompt);
+                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    await ShowMessageAsync("(empty response)");
+                    return;
+                }
+
+                if (capture.HasSelection)
+                {
+                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
+                }
+                else
+                {
+                    await _textService.SetClipboardTextAsync(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync($"Error: {ex.Message}");
+            }
+        });
+    }
+
+    private async System.Threading.Tasks.Task StartTranslateSilentFlow()
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var capture = await _textService.CaptureAsync();
+            if (string.IsNullOrWhiteSpace(capture.Text))
+            {
+                await ShowMessageAsync("No text selection or clipboard text found.");
+                return;
+            }
+
+            try
+            {
+                using var llm = new LlmService();
+                var systemPrompt = ComposeSystemPrompt(TranslatePrompt);
+                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    await ShowMessageAsync("(empty response)");
+                    return;
+                }
+
+                if (capture.HasSelection)
+                {
+                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
+                }
+                else
+                {
+                    await _textService.SetClipboardTextAsync(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync($"Error: {ex.Message}");
+            }
+        });
+    }
+
     private void ShowSettings()
     {
         Dispatcher.UIThread.Post(async () =>
@@ -151,8 +229,8 @@ public partial class App : global::Avalonia.Application
 
         _hotkey.Clear();
         _hotkey.TryRegister(_store.Current.Hotkey, () => _ = StartCaptureAsync());
-        _hotkey.TryRegister(_store.Current.ProofreadHotkey, () => _ = StartTextWorkflowAsync(TextWorkflowMode.Proofread));
-        _hotkey.TryRegister(_store.Current.TranslateHotkey, () => _ = StartTextWorkflowAsync(TextWorkflowMode.Translate));
+        _hotkey.TryRegister(_store.Current.ProofreadHotkey, () => _ = StartProofreadSilentFlow());
+        _hotkey.TryRegister(_store.Current.TranslateHotkey, () => _ = StartTranslateSilentFlow());
     }
 
     private async System.Threading.Tasks.Task StartTextWorkflowAsync(TextWorkflowMode mode)
