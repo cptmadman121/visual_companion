@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
+using TrayVisionPrompt.Avalonia.Configuration;
+using TrayVisionPrompt.Avalonia.Services;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
@@ -17,6 +19,8 @@ public partial class ResponseDialog : Window
     public ResponseDialog()
     {
         InitializeComponent();
+        var store = new ConfigurationStore();
+        Icon = IconProvider.LoadWindowIcon(store.Current.IconAsset);
         _responseTextBlock = this.FindControl<TextBlock>("ResponseTextBlock");
     }
 

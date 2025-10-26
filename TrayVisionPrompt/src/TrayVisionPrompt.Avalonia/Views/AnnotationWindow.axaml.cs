@@ -11,6 +11,8 @@ using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using System.Threading.Tasks;
 using Shapes = Avalonia.Controls.Shapes;
+using TrayVisionPrompt.Avalonia.Configuration;
+using TrayVisionPrompt.Avalonia.Services;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
@@ -29,6 +31,8 @@ public partial class AnnotationWindow : Window
     public AnnotationWindow()
     {
         InitializeComponent();
+        var store = new ConfigurationStore();
+        Icon = IconProvider.LoadWindowIcon(store.Current.IconAsset);
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMoved, RoutingStrategies.Tunnel);
         AddHandler(PointerReleasedEvent, OnPointerReleased, RoutingStrategies.Tunnel);

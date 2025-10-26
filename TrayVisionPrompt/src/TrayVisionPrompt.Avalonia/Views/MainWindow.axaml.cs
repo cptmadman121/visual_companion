@@ -5,15 +5,18 @@ using Avalonia.Markup.Xaml;
 using TrayVisionPrompt.Avalonia.ViewModels;
 using TrayVisionPrompt.Avalonia.Services;
 using TrayVisionPrompt.Avalonia.Views;
+using TrayVisionPrompt.Avalonia.Configuration;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
 public partial class MainWindow : Window
 {
     private readonly TranscriptService _transcript = new();
+    private readonly ConfigurationStore _store = new();
     public MainWindow()
     {
         InitializeComponent();
+        Icon = IconProvider.LoadWindowIcon(_store.Current.IconAsset);
         _transcript.StartNewSession();
     }
 
@@ -44,7 +47,7 @@ public partial class MainWindow : Window
         {
             using var llm = new LlmService();
             // Simple context: join previous messages for grounding
-            var text = await llm.SendAsync(string.Join("\n", vm.Messages));
+            var text = await llm.SendAsync(string.Join("\n", vm.Messages), systemPrompt: SystemPromptBuilder.Build(_store.Current.Language));
             dlg.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
             vm.Messages.Add($"Assistant: {text}");
             _transcript.Append($"Assistant: {text}");
@@ -88,7 +91,7 @@ public partial class MainWindow : Window
                     : $"{ask.Instruction}\n\nOCR-Fallback:\n{ocr}";
 
                 using var llm = new LlmService();
-                var text = await llm.SendAsync(prompt, img, forceVision: true);
+                var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: SystemPromptBuilder.Build(_store.Current.Language));
                 resp.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
                 if (DataContext is MainViewModel vm)
                 {

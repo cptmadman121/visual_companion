@@ -1,8 +1,10 @@
+using System;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using Avalonia.Interactivity;
 using TrayVisionPrompt.Avalonia.ViewModels;
 using TrayVisionPrompt.Avalonia.Services;
+using TrayVisionPrompt.Avalonia.Configuration;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
@@ -51,7 +53,8 @@ public partial class SettingsView : global::Avalonia.Controls.UserControl
         try
         {
             using var svc = new LlmService();
-            var text = await svc.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.");
+            var store = new ConfigurationStore();
+            var text = await svc.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.", systemPrompt: ComposeSystemPrompt(store.Current.Language));
             dlg.ResponseText = string.IsNullOrWhiteSpace(text) ? "(no response)" : text;
         }
         catch (Exception ex)
@@ -59,4 +62,6 @@ public partial class SettingsView : global::Avalonia.Controls.UserControl
             dlg.ResponseText = $"Error: {ex.Message}";
         }
     }
+
+    private static string ComposeSystemPrompt(string language) => SystemPromptBuilder.Build(language);
 }

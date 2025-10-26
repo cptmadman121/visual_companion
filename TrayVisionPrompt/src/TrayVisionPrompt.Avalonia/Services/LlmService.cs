@@ -21,7 +21,7 @@ public class LlmService : IDisposable
         _httpClient = CreateHttpClient(_store.Current);
     }
 
-    public async Task<string> SendAsync(string prompt, string? imageBase64 = null, CancellationToken cancellationToken = default, bool forceVision = false)
+    public async Task<string> SendAsync(string prompt, string? imageBase64 = null, CancellationToken cancellationToken = default, bool forceVision = false, string? systemPrompt = null)
     {
         var cfg = _store.Current;
         var endpoint = NormalizeEndpoint(cfg.Endpoint);
@@ -47,19 +47,36 @@ public class LlmService : IDisposable
             });
         }
 
+        var messages = new List<Dictionary<string, object?>>();
+
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            messages.Add(new Dictionary<string, object?>
+            {
+                ["role"] = "system",
+                ["content"] = new[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["type"] = "text",
+                        ["text"] = systemPrompt
+                    }
+                }
+            });
+        }
+
+        messages.Add(new Dictionary<string, object?>
+        {
+            ["role"] = "user",
+            ["content"] = content
+        });
+
         var payload = new
         {
             model = cfg.Model,
             temperature = cfg.Temperature,
             max_tokens = cfg.MaxTokens,
-            messages = new[]
-            {
-                new Dictionary<string, object?>
-                {
-                    ["role"] = "user",
-                    ["content"] = content
-                }
-            }
+            messages
         };
 
         using var cts = CreateLinkedCts(cfg.RequestTimeoutMs, cancellationToken);

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -7,39 +8,79 @@ namespace TrayVisionPrompt.Avalonia.Services;
 public sealed class WinHotkeyRegistrar : NativeWindow, IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
-    private int _hotkeyId;
+    private int _nextId = 1;
+    private readonly Dictionary<int, Action> _handlers = new();
+    private bool _handleCreated;
 
-    public event EventHandler? HotkeyPressed;
-
-    public bool TryRegister(string hotkey)
+    public WinHotkeyRegistrar()
     {
-        _hotkeyId = GetHashCode();
-        CreateHandle(new CreateParams());
+        CreateMessageWindow();
+    }
+
+    public bool TryRegister(string hotkey, Action handler)
+    {
+        if (string.IsNullOrWhiteSpace(hotkey))
+        {
+            return false;
+        }
+
+        CreateMessageWindow();
 
         try
         {
             var (mods, key) = Parse(hotkey);
-            return RegisterHotKey(Handle, _hotkeyId, mods, key);
+            var id = _nextId++;
+            if (RegisterHotKey(Handle, id, mods, key))
+            {
+                _handlers[id] = handler;
+                return true;
+            }
         }
         catch
         {
-            return false;
+            // ignored
         }
+
+        return false;
+    }
+
+    public void Clear()
+    {
+        foreach (var id in _handlers.Keys)
+        {
+            try { UnregisterHotKey(Handle, id); }
+            catch { /* ignore */ }
+        }
+        _handlers.Clear();
     }
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == _hotkeyId)
+        if (m.Msg == WM_HOTKEY)
         {
-            HotkeyPressed?.Invoke(this, EventArgs.Empty);
+            if (_handlers.TryGetValue(m.WParam.ToInt32(), out var handler))
+            {
+                handler?.Invoke();
+            }
         }
         base.WndProc(ref m);
     }
 
     public void Dispose()
     {
-        try { UnregisterHotKey(Handle, _hotkeyId); } catch { /* ignore */ }
+        Clear();
         DestroyHandle();
+    }
+
+    private void CreateMessageWindow()
+    {
+        if (_handleCreated)
+        {
+            return;
+        }
+
+        CreateHandle(new CreateParams());
+        _handleCreated = true;
     }
 
     private static (uint mods, uint key) Parse(string hotkey)

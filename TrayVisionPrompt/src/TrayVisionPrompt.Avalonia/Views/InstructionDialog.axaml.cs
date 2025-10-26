@@ -4,6 +4,8 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using System;
 using System.IO;
+using TrayVisionPrompt.Avalonia.Configuration;
+using TrayVisionPrompt.Avalonia.Services;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
@@ -22,6 +24,8 @@ public partial class InstructionDialog : Window
     public InstructionDialog()
     {
         InitializeComponent();
+        var store = new ConfigurationStore();
+        Icon = IconProvider.LoadWindowIcon(store.Current.IconAsset);
         _instructionBox = this.FindControl<global::Avalonia.Controls.TextBox>("InstructionBox");
         _thumbnail = this.FindControl<global::Avalonia.Controls.Image>("Thumbnail");
     }
