@@ -14,9 +14,9 @@
           <TextBlock Classes="caption" Text="Translate Hotkey"/>
           <TextBox Watermark="Ctrl+Shift+T" Text="{Binding TranslateHotkey, Mode=TwoWay}"/>
           <TextBlock Classes="caption" Text="Language"/>
-          <ComboBox Items="{Binding Languages}" SelectedItem="{Binding Language, Mode=TwoWay}"/>
+          <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language, Mode=TwoWay}"/>
           <TextBlock Classes="caption" Text="Icon"/>
-          <ComboBox Items="{Binding AvailableIcons}" SelectedItem="{Binding SelectedIcon, Mode=TwoWay}"/>
+          <ComboBox ItemsSource="{Binding AvailableIcons}" SelectedItem="{Binding SelectedIcon, Mode=TwoWay}"/>
           <TextBlock Classes="caption" Text="Backend"/>
           <ComboBox SelectedItem="{Binding Backend, Mode=TwoWay}">
             <ComboBoxItem>ollama</ComboBoxItem>

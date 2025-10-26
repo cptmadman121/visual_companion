@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace TrayVisionPrompt.Avalonia.Services;
@@ -11,6 +13,7 @@ public sealed class TrayService : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
     private string? _iconAsset;
+    private const string DefaultIconAsset = "ollama-companion.ico";
 
     public event EventHandler? OpenRequested;
     public event EventHandler? CaptureRequested;
@@ -22,10 +25,10 @@ public sealed class TrayService : IDisposable
 
     public TrayService(string? iconAsset)
     {
-        _iconAsset = iconAsset;
+        _iconAsset = string.IsNullOrWhiteSpace(iconAsset) ? DefaultIconAsset : iconAsset;
         _notifyIcon = new NotifyIcon
         {
-            Icon = LoadIcon(iconAsset),
+            Icon = LoadIcon(_iconAsset),
             Visible = false,
             Text = "TrayVisionPrompt"
         };
@@ -49,18 +52,19 @@ public sealed class TrayService : IDisposable
 
     public void UpdateIcon(string? iconAsset)
     {
-        if (string.Equals(_iconAsset, iconAsset, StringComparison.OrdinalIgnoreCase))
+        var effective = string.IsNullOrWhiteSpace(iconAsset) ? DefaultIconAsset : iconAsset;
+        if (string.Equals(_iconAsset, effective, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         try
         {
-            var icon = LoadIcon(iconAsset);
+            var icon = LoadIcon(effective);
             var previous = _notifyIcon.Icon;
             _notifyIcon.Icon = icon;
             previous?.Dispose();
-            _iconAsset = iconAsset;
+            _iconAsset = effective;
         }
         catch
         {
@@ -84,7 +88,9 @@ public sealed class TrayService : IDisposable
 
     private static Icon LoadIcon(string? iconAsset)
     {
-        var icon = TryLoadIcon(iconAsset);
+        var effective = string.IsNullOrWhiteSpace(iconAsset) ? DefaultIconAsset : iconAsset;
+        // Try embedded resources first, then files
+        var icon = TryLoadIconFromEmbedded(effective) ?? TryLoadIcon(effective);
         return icon ?? (Icon)SystemIcons.Application.Clone();
     }
 
@@ -129,6 +135,56 @@ public sealed class TrayService : IDisposable
                 catch
                 {
                     continue;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static Icon? TryLoadIconFromEmbedded(string iconAsset)
+    {
+        var asm = Assembly.GetExecutingAssembly();
+        var candidates = new[]
+        {
+            iconAsset,
+            iconAsset.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) ? iconAsset : iconAsset + ".ico",
+            iconAsset.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? iconAsset : iconAsset + ".png",
+        }.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+        foreach (var name in asm.GetManifestResourceNames())
+        {
+            foreach (var cand in candidates)
+            {
+                if (!name.EndsWith("." + cand.Replace('/', '.').Replace('\\', '.'), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    using var s = asm.GetManifestResourceStream(name);
+                    if (s == null) continue;
+                    if (name.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return new Icon(s);
+                    }
+                    if (name.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using var bmp = (Bitmap)Image.FromStream(s);
+                        var h = bmp.GetHicon();
+                        try
+                        {
+                            using var ic = Icon.FromHandle(h);
+                            return (Icon)ic.Clone();
+                        }
+                        finally
+                        {
+                            NativeMethods.DestroyIcon(h);
+                        }
+                    }
+                }
+                catch
+                {
+                    // ignore and continue
                 }
             }
         }

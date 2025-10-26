@@ -62,11 +62,12 @@ public sealed class ForegroundTextService
         {
             return TextCaptureResult.Empty;
         }
-        SendCopyShortcut(foreground);
+        // Attempt a direct copy on the focused control first; fall back to Ctrl+C
+        SendCopy(foreground);
 
         string? capturedText = null;
         var start = Environment.TickCount64;
-        while (Environment.TickCount64 - start < 500)
+        while (Environment.TickCount64 - start < 1500)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Clipboard.ContainsText())
@@ -124,7 +125,8 @@ public sealed class ForegroundTextService
         }
 
         BringToForeground(windowHandle);
-        SendPasteShortcut(windowHandle);
+        // Try direct paste first; fall back to Ctrl+V
+        SendPaste(windowHandle);
 
         RestoreClipboard(originalData);
     }
@@ -182,13 +184,43 @@ public sealed class ForegroundTextService
     private static void SendCopyShortcut(IntPtr windowHandle)
     {
         BringToForeground(windowHandle);
+        ReleaseActiveModifiers();
         SendShortcut(Keys.ControlKey, Keys.C);
     }
 
     private static void SendPasteShortcut(IntPtr windowHandle)
     {
         BringToForeground(windowHandle);
+        ReleaseActiveModifiers();
         SendShortcut(Keys.ControlKey, Keys.V);
+    }
+
+    private static void SendCopy(IntPtr windowHandle)
+    {
+        BringToForeground(windowHandle);
+        // Try sending WM_COPY to the currently focused control
+        var target = GetFocusedControl(windowHandle);
+        if (target != IntPtr.Zero)
+        {
+            SendMessage(target, WM_COPY, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(20);
+            return;
+        }
+        // Fallback to keyboard shortcut
+        SendCopyShortcut(windowHandle);
+    }
+
+    private static void SendPaste(IntPtr windowHandle)
+    {
+        BringToForeground(windowHandle);
+        var target = GetFocusedControl(windowHandle);
+        if (target != IntPtr.Zero)
+        {
+            SendMessage(target, WM_PASTE, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(20);
+            return;
+        }
+        SendPasteShortcut(windowHandle);
     }
 
     private static void SendShortcut(Keys modifier, Keys key)
@@ -220,6 +252,34 @@ public sealed class ForegroundTextService
         };
     }
 
+    private static void ReleaseActiveModifiers()
+    {
+        // Best-effort: send key-up for common modifiers to avoid combinations like Ctrl+Shift+C
+        var mods = new ushort[]
+        {
+            (ushort)Keys.ShiftKey,
+            (ushort)Keys.LShiftKey,
+            (ushort)Keys.RShiftKey,
+            (ushort)Keys.ControlKey,
+            (ushort)Keys.LControlKey,
+            (ushort)Keys.RControlKey,
+            (ushort)Keys.Menu, // Alt
+            0x5B, // LWin
+            0x5C  // RWin
+        };
+
+        var inputs = new System.Collections.Generic.List<INPUT>(mods.Length);
+        foreach (var vk in mods)
+        {
+            inputs.Add(CreateKeyInput(vk, true));
+        }
+        if (inputs.Count > 0)
+        {
+            SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+            Thread.Sleep(10);
+        }
+    }
+
     private static void BringToForeground(IntPtr windowHandle)
     {
         if (windowHandle == IntPtr.Zero)
@@ -234,8 +294,13 @@ public sealed class ForegroundTextService
             AttachThreadInput(foregroundThread, targetThread, true);
         }
 
-        ShowWindow(windowHandle, 5);
+        // Only restore if minimized to avoid changing window size/state (e.g., Notepad++)
+        if (IsIconic(windowHandle))
+        {
+            ShowWindow(windowHandle, 9); // SW_RESTORE
+        }
         SetForegroundWindow(windowHandle);
+        Thread.Sleep(10);
 
         if (foregroundThread != targetThread)
         {
@@ -288,6 +353,18 @@ public sealed class ForegroundTextService
         }
     }
 
+    private static IntPtr GetFocusedControl(IntPtr windowHandle)
+    {
+        uint threadId = GetWindowThreadProcessId(windowHandle, out _);
+        var info = new GUITHREADINFO();
+        info.cbSize = (uint)Marshal.SizeOf<GUITHREADINFO>();
+        if (GetGUIThreadInfo(threadId, ref info))
+        {
+            return info.hwndFocus != IntPtr.Zero ? info.hwndFocus : windowHandle;
+        }
+        return windowHandle;
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
@@ -308,6 +385,18 @@ public sealed class ForegroundTextService
 
     [DllImport("user32.dll")]
     private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
+    private const int WM_COPY = 0x0301;
+    private const int WM_PASTE = 0x0302;
 
     private const uint KEYEVENTF_KEYUP = 0x0002;
 
@@ -332,6 +421,29 @@ public sealed class ForegroundTextService
         public uint dwFlags;
         public uint time;
         public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GUITHREADINFO
+    {
+        public uint cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public RECT rcCaret;
     }
 }
 
