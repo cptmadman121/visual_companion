@@ -1,8 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Windows.Forms;
 
@@ -11,18 +10,22 @@ namespace TrayVisionPrompt.Avalonia.Services;
 public sealed class TrayService : IDisposable
 {
     private readonly NotifyIcon _notifyIcon;
+    private string? _iconAsset;
 
     public event EventHandler? OpenRequested;
     public event EventHandler? CaptureRequested;
+    public event EventHandler? ProofreadRequested;
+    public event EventHandler? TranslateRequested;
     public event EventHandler? SettingsRequested;
     public event EventHandler? TestRequested;
     public event EventHandler? ExitRequested;
 
-    public TrayService()
+    public TrayService(string? iconAsset)
     {
+        _iconAsset = iconAsset;
         _notifyIcon = new NotifyIcon
         {
-            Icon = CreateIcon(),
+            Icon = LoadIcon(iconAsset),
             Visible = false,
             Text = "TrayVisionPrompt"
         };
@@ -33,6 +36,8 @@ public sealed class TrayService : IDisposable
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open", null, (_, _) => OpenRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("Capture", null, (_, _) => CaptureRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add("Proofread", null, (_, _) => ProofreadRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add("Translate", null, (_, _) => TranslateRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("Settings", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("Test Backend", null, (_, _) => TestRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("Open Logs", null, (_, _) => OpenLogs());
@@ -40,6 +45,27 @@ public sealed class TrayService : IDisposable
 
         _notifyIcon.ContextMenuStrip = menu;
         _notifyIcon.Visible = true;
+    }
+
+    public void UpdateIcon(string? iconAsset)
+    {
+        if (string.Equals(_iconAsset, iconAsset, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            var icon = LoadIcon(iconAsset);
+            var previous = _notifyIcon.Icon;
+            _notifyIcon.Icon = icon;
+            previous?.Dispose();
+            _iconAsset = iconAsset;
+        }
+        catch
+        {
+            // ignore icon load errors to avoid crashing the tray
+        }
     }
 
     private void OpenLogs()
@@ -55,37 +81,109 @@ public sealed class TrayService : IDisposable
         _notifyIcon.Dispose();
     }
 
-    private static Icon CreateIcon()
+
+    private static Icon LoadIcon(string? iconAsset)
     {
-        using var bitmap = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
-        using (var graphics = Graphics.FromImage(bitmap))
+        var icon = TryLoadIcon(iconAsset);
+        return icon ?? (Icon)SystemIcons.Application.Clone();
+    }
+
+    private static Icon? TryLoadIcon(string? iconAsset)
+    {
+        foreach (var path in EnumerateCandidatePaths(iconAsset))
         {
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.Clear(Color.Transparent);
+            if (!File.Exists(path))
+            {
+                continue;
+            }
 
-            var accent = Color.FromArgb(0x24, 0x6B, 0xC1);
-            using var backgroundBrush = new SolidBrush(Color.FromArgb(230, accent));
-            graphics.FillEllipse(backgroundBrush, new Rectangle(2, 2, 28, 28));
+            if (path.EndsWith(".ico", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var stream = File.OpenRead(path);
+                    return new Icon(stream);
+                }
+                catch
+                {
+                    continue;
+                }
+            }
 
-            using var pen = new Pen(Color.White, 2.8f);
-            var rect = new RectangleF(8, 8, 16, 16);
-            graphics.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
-
-            using var arrowPen = new Pen(Color.White, 3f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-            graphics.DrawLine(arrowPen, new PointF(12, 12), new PointF(20, 20));
-            graphics.DrawLine(arrowPen, new PointF(16, 20), new PointF(20, 20));
-            graphics.DrawLine(arrowPen, new PointF(20, 16), new PointF(20, 20));
+            if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var bitmap = (Bitmap)Image.FromFile(path);
+                    var handle = bitmap.GetHicon();
+                    try
+                    {
+                        using var icon = Icon.FromHandle(handle);
+                        return (Icon)icon.Clone();
+                    }
+                    finally
+                    {
+                        NativeMethods.DestroyIcon(handle);
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
         }
 
-        var handle = bitmap.GetHicon();
-        try
+        return null;
+    }
+
+    private static IEnumerable<string> EnumerateCandidatePaths(string? iconAsset)
+    {
+        if (string.IsNullOrWhiteSpace(iconAsset))
         {
-            using var icon = Icon.FromHandle(handle);
-            return (Icon)icon.Clone();
+            yield break;
         }
-        finally
+
+        var hasExtension = Path.HasExtension(iconAsset);
+        if (Path.IsPathRooted(iconAsset))
         {
-            NativeMethods.DestroyIcon(handle);
+            if (hasExtension)
+            {
+                yield return iconAsset;
+            }
+            else
+            {
+                yield return iconAsset + ".ico";
+                yield return iconAsset + ".png";
+            }
+
+            yield break;
+        }
+
+        var baseDir = AppContext.BaseDirectory;
+        if (iconAsset.Contains(Path.DirectorySeparatorChar) || iconAsset.Contains(Path.AltDirectorySeparatorChar))
+        {
+            var combined = Path.Combine(baseDir, iconAsset);
+            if (hasExtension)
+            {
+                yield return combined;
+            }
+            else
+            {
+                yield return combined + ".ico";
+                yield return combined + ".png";
+            }
+            yield break;
+        }
+
+        var assetsDir = Path.Combine(baseDir, "Assets");
+        if (hasExtension)
+        {
+            yield return Path.Combine(assetsDir, iconAsset);
+        }
+        else
+        {
+            yield return Path.Combine(assetsDir, iconAsset + ".ico");
+            yield return Path.Combine(assetsDir, iconAsset + ".png");
         }
     }
 

@@ -7,8 +7,16 @@
 
       <Border Classes="card">
         <StackPanel Spacing="8">
-          <TextBlock Classes="caption" Text="Global Hotkey"/>
-          <TextBox Watermark="Ctrl+Shift+Space" Text="{Binding Hotkey, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Capture Hotkey"/>
+          <TextBox Watermark="Ctrl+Shift+S" Text="{Binding Hotkey, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Proofread Hotkey"/>
+          <TextBox Watermark="Ctrl+Shift+P" Text="{Binding ProofreadHotkey, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Translate Hotkey"/>
+          <TextBox Watermark="Ctrl+Shift+T" Text="{Binding TranslateHotkey, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Language"/>
+          <ComboBox Items="{Binding Languages}" SelectedItem="{Binding Language, Mode=TwoWay}"/>
+          <TextBlock Classes="caption" Text="Icon"/>
+          <ComboBox Items="{Binding AvailableIcons}" SelectedItem="{Binding SelectedIcon, Mode=TwoWay}"/>
           <TextBlock Classes="caption" Text="Backend"/>
           <ComboBox SelectedItem="{Binding Backend, Mode=TwoWay}">
             <ComboBoxItem>ollama</ComboBoxItem>

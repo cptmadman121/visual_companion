@@ -5,7 +5,19 @@ namespace TrayVisionPrompt.Configuration;
 public class AppConfiguration
 {
     [JsonPropertyName("hotkey")]
-    public string Hotkey { get; set; } = "Win+Shift+Q";
+    public string Hotkey { get; set; } = "Ctrl+Shift+S";
+
+    [JsonPropertyName("proofreadHotkey")]
+    public string ProofreadHotkey { get; set; } = "Ctrl+Shift+P";
+
+    [JsonPropertyName("translateHotkey")]
+    public string TranslateHotkey { get; set; } = "Ctrl+Shift+T";
+
+    [JsonPropertyName("language")]
+    public string Language { get; set; } = "English";
+
+    [JsonPropertyName("iconAsset")]
+    public string IconAsset { get; set; } = string.Empty;
 
     [JsonPropertyName("backend")]
     public string Backend { get; set; } = "ollama";
