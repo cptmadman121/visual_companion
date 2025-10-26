@@ -29,6 +29,11 @@ public class SettingsViewModel
     public IReadOnlyList<IconOption> AvailableIcons { get; }
     public IconOption? SelectedIcon { get; set; }
 
+    // Prompts
+    public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";
+    public string ProofreadPrompt { get; set; } = "";
+    public string TranslatePrompt { get; set; } = "";
+
     public ICommand SaveCommand { get; }
     public ICommand CancelCommand { get; }
 
@@ -57,6 +62,9 @@ public class SettingsViewModel
         UseOcrFallback = c.UseOcrFallback;
         Proxy = c.Proxy;
         Language = string.IsNullOrWhiteSpace(c.Language) ? "English" : c.Language;
+        CaptureInstruction = string.IsNullOrWhiteSpace(c.CaptureInstruction) ? "Describe the selected region succinctly." : c.CaptureInstruction;
+        ProofreadPrompt = c.ProofreadPrompt;
+        TranslatePrompt = c.TranslatePrompt;
         SelectedIcon = AvailableIcons
             .FirstOrDefault(o => string.Equals(o.Key, c.IconAsset, StringComparison.OrdinalIgnoreCase))
             ?? AvailableIcons.FirstOrDefault();
@@ -81,6 +89,9 @@ public class SettingsViewModel
         _store.Current.UseOcrFallback = UseOcrFallback;
         _store.Current.Proxy = Proxy;
         _store.Current.Language = Language;
+        _store.Current.CaptureInstruction = CaptureInstruction;
+        _store.Current.ProofreadPrompt = string.IsNullOrWhiteSpace(ProofreadPrompt) ? _store.Current.ProofreadPrompt : ProofreadPrompt;
+        _store.Current.TranslatePrompt = string.IsNullOrWhiteSpace(TranslatePrompt) ? _store.Current.TranslatePrompt : TranslatePrompt;
         _store.Current.IconAsset = SelectedIcon?.Key ?? string.Empty;
         _store.Save();
     }
