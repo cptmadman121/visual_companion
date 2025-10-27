@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Windows.Forms;
+using TrayVisionPrompt.Configuration;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
@@ -14,14 +15,13 @@ public sealed class TrayService : IDisposable
     private readonly NotifyIcon _notifyIcon;
     private string? _iconAsset;
     private const string DefaultIconAsset = "ollama-companion.ico";
+    private readonly ContextMenuStrip _menu = new();
 
     public event EventHandler? OpenRequested;
-    public event EventHandler? CaptureRequested;
-    public event EventHandler? ProofreadRequested;
-    public event EventHandler? TranslateRequested;
     public event EventHandler? SettingsRequested;
     public event EventHandler? TestRequested;
     public event EventHandler? ExitRequested;
+    public event EventHandler<PromptShortcutConfiguration>? PromptRequested;
 
     public TrayService(string? iconAsset)
     {
@@ -36,18 +36,37 @@ public sealed class TrayService : IDisposable
 
     public void Initialize()
     {
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("Open", null, (_, _) => OpenRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("Capture", null, (_, _) => CaptureRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("Proofread", null, (_, _) => ProofreadRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("Translate", null, (_, _) => TranslateRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("Settings", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("Test Backend", null, (_, _) => TestRequested?.Invoke(this, EventArgs.Empty));
-        menu.Items.Add("Open Logs", null, (_, _) => OpenLogs());
-        menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
-
-        _notifyIcon.ContextMenuStrip = menu;
+        _notifyIcon.ContextMenuStrip = _menu;
+        UpdatePrompts(Array.Empty<PromptShortcutConfiguration>());
         _notifyIcon.Visible = true;
+    }
+
+    public void UpdatePrompts(IEnumerable<PromptShortcutConfiguration> prompts)
+    {
+        var promptList = prompts?.ToList() ?? new List<PromptShortcutConfiguration>();
+
+        _menu.Items.Clear();
+        _menu.Items.Add("Open", null, (_, _) => OpenRequested?.Invoke(this, EventArgs.Empty));
+
+        if (promptList.Count > 0)
+        {
+            _menu.Items.Add(new ToolStripSeparator());
+            foreach (var prompt in promptList)
+            {
+                var text = string.IsNullOrWhiteSpace(prompt.Hotkey)
+                    ? prompt.Name
+                    : $"{prompt.Name} ({prompt.Hotkey})";
+                var item = new ToolStripMenuItem(text);
+                item.Click += (_, _) => PromptRequested?.Invoke(this, prompt);
+                _menu.Items.Add(item);
+            }
+            _menu.Items.Add(new ToolStripSeparator());
+        }
+
+        _menu.Items.Add("Settings", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
+        _menu.Items.Add("Test Backend", null, (_, _) => TestRequested?.Invoke(this, EventArgs.Empty));
+        _menu.Items.Add("Open Logs", null, (_, _) => OpenLogs());
+        _menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
     }
 
     public void UpdateIcon(string? iconAsset)

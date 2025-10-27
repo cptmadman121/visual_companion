@@ -61,6 +61,7 @@ public class ServiceLocator : IServiceLocator
         RegisterSingleton(new DialogService(this));
         RegisterSingleton(new TrayIconService(this));
         RegisterSingleton<IOllmClientFactory>(new OllmClientFactory(Logger));
+        RegisterSingleton(new ForegroundTextService());
 
         RegisterSingleton(new CaptureWorkflow(
             Resolve<DialogService>(),
@@ -70,10 +71,19 @@ public class ServiceLocator : IServiceLocator
             Resolve<ResponseCache>(),
             _loggerFactory.CreateLogger<CaptureWorkflow>()));
 
+        RegisterSingleton(new TextWorkflow(
+            Resolve<ForegroundTextService>(),
+            Resolve<IOllmClientFactory>(),
+            configurationManager,
+            Resolve<DialogService>(),
+            Resolve<ResponseCache>(),
+            _loggerFactory.CreateLogger<TextWorkflow>()));
+
         RegisterSingleton(new ViewModels.ShellViewModel(
             Resolve<TrayIconService>(),
             Resolve<HotkeyService>(),
             Resolve<CaptureWorkflow>(),
+            Resolve<TextWorkflow>(),
             Resolve<DialogService>(),
             configurationManager,
             _loggerFactory.CreateLogger<ViewModels.ShellViewModel>()));

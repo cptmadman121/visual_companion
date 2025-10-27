@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
+using TrayVisionPrompt.Configuration;
 using TrayVisionPrompt.Infrastructure;
 using TrayVisionPrompt.Models;
 
@@ -15,8 +18,9 @@ public class TrayIconService : IDisposable
     private readonly IServiceLocator _serviceLocator;
     private readonly NotifyIcon _notifyIcon;
     private readonly ResponseCache _responseCache;
+    private readonly ContextMenuStrip _menu = new();
 
-    public event EventHandler? HotkeyTriggered;
+    public event EventHandler<PromptShortcutConfiguration>? PromptRequested;
     public event EventHandler? SettingsRequested;
     public event EventHandler? TestBackendRequested;
     public event EventHandler? CopyLastResponseRequested;
@@ -37,16 +41,40 @@ public class TrayIconService : IDisposable
 
     public void Initialize()
     {
-        var contextMenu = new ContextMenuStrip();
-        contextMenu.Items.Add("Screenshot aufnehmen", null, (_, _) => HotkeyTriggered?.Invoke(this, EventArgs.Empty));
-        contextMenu.Items.Add("Einstellungen…", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
-        contextMenu.Items.Add("Backend testen", null, (_, _) => TestBackendRequested?.Invoke(this, EventArgs.Empty));
-        contextMenu.Items.Add("Letzte Antwort kopieren", null, (_, _) => CopyLastResponseRequested?.Invoke(this, EventArgs.Empty));
-        contextMenu.Items.Add("Logs öffnen", null, (_, _) => OpenLogsRequested?.Invoke(this, EventArgs.Empty));
-        contextMenu.Items.Add("Beenden", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
-
-        _notifyIcon.ContextMenuStrip = contextMenu;
+        _notifyIcon.ContextMenuStrip = _menu;
+        UpdatePrompts(Array.Empty<PromptShortcutConfiguration>());
         _notifyIcon.Visible = true;
+    }
+
+    public void UpdatePrompts(IEnumerable<PromptShortcutConfiguration> prompts)
+    {
+        var promptList = prompts?.ToList() ?? new List<PromptShortcutConfiguration>();
+
+        _menu.Items.Clear();
+
+        foreach (var prompt in promptList)
+        {
+            var text = string.IsNullOrWhiteSpace(prompt.Hotkey)
+                ? prompt.Name
+                : $"{prompt.Name} ({prompt.Hotkey})";
+            var item = new ToolStripMenuItem(text);
+            item.Click += (_, _) =>
+            {
+                PromptRequested?.Invoke(this, prompt);
+            };
+            _menu.Items.Add(item);
+        }
+
+        if (promptList.Count > 0)
+        {
+            _menu.Items.Add(new ToolStripSeparator());
+        }
+
+        _menu.Items.Add("Settings", null, (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty));
+        _menu.Items.Add("Test Backend", null, (_, _) => TestBackendRequested?.Invoke(this, EventArgs.Empty));
+        _menu.Items.Add("Copy Last Response", null, (_, _) => CopyLastResponseRequested?.Invoke(this, EventArgs.Empty));
+        _menu.Items.Add("Open Logs", null, (_, _) => OpenLogsRequested?.Invoke(this, EventArgs.Empty));
+        _menu.Items.Add("Exit", null, (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty));
     }
 
     public void CopyLastResponseToClipboard()

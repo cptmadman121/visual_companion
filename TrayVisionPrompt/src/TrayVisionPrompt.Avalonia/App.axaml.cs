@@ -4,10 +4,11 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using TrayVisionPrompt.Avalonia.Configuration;
+using TrayVisionPrompt.Avalonia.Services;
 using TrayVisionPrompt.Avalonia.ViewModels;
 using TrayVisionPrompt.Avalonia.Views;
-using TrayVisionPrompt.Avalonia.Services;
-using TrayVisionPrompt.Avalonia.Configuration;
+using TrayVisionPrompt.Configuration;
 
 namespace TrayVisionPrompt.Avalonia;
 
@@ -19,12 +20,6 @@ public partial class App : global::Avalonia.Application
     private readonly ConfigurationStore _store = new();
     private readonly ForegroundTextService _textService = new();
 
-    private enum TextWorkflowMode
-    {
-        Proofread,
-        Translate
-    }
-
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -34,7 +29,6 @@ public partial class App : global::Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // Keep app alive with a hidden window; UI opens on-demand via tray/hotkey
             var hidden = new Window
             {
                 Width = 1,
@@ -55,12 +49,11 @@ public partial class App : global::Avalonia.Application
             _tray = new TrayService(_store.Current.IconAsset);
             _tray.Initialize();
             _tray.OpenRequested += (_, _) => ShowMainWindow();
-            _tray.CaptureRequested += async (_, _) => await StartCaptureAsync();
-            _tray.ProofreadRequested += async (_, _) => await StartProofreadSilentFlow();
-            _tray.TranslateRequested += async (_, _) => await StartTranslateSilentFlow();
             _tray.SettingsRequested += (_, _) => ShowSettings();
             _tray.TestRequested += async (_, _) => await TestBackendAsync();
             _tray.ExitRequested += (_, _) => desktop.Shutdown();
+            _tray.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut);
+            _tray.UpdatePrompts(_store.Current.PromptShortcuts);
 
             _hotkey = new WinHotkeyRegistrar();
             RegisterHotkeys();
@@ -78,7 +71,7 @@ public partial class App : global::Avalonia.Application
         });
     }
 
-    private async System.Threading.Tasks.Task StartCaptureAsync()
+    private async System.Threading.Tasks.Task StartCaptureAsync(PromptShortcutConfiguration? shortcut = null)
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -87,7 +80,15 @@ public partial class App : global::Avalonia.Application
 
             if (annot.CapturedImageBase64 is string img && !string.IsNullOrWhiteSpace(img))
             {
-                var ask = new InstructionDialog { Instruction = string.IsNullOrWhiteSpace(_store.Current.CaptureInstruction) ? "Describe the selected region succinctly." : _store.Current.CaptureInstruction };
+                var fallbackInstruction = string.IsNullOrWhiteSpace(_store.Current.CaptureInstruction)
+                    ? "Describe the selected region succinctly."
+                    : _store.Current.CaptureInstruction;
+                var prefill = string.IsNullOrWhiteSpace(shortcut?.Prompt) ? fallbackInstruction : shortcut!.Prompt;
+                var ask = new InstructionDialog { Instruction = prefill };
+                if (!string.IsNullOrWhiteSpace(shortcut?.Name))
+                {
+                    ask.Title = shortcut!.Name;
+                }
                 ask.SetThumbnail(img);
                 await ask.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
                 if (!ask.Confirmed) return;
@@ -116,6 +117,101 @@ public partial class App : global::Avalonia.Application
         });
     }
 
+    private async System.Threading.Tasks.Task ExecutePromptAsync(PromptShortcutConfiguration shortcut)
+    {
+        switch (shortcut.Activation)
+        {
+            case PromptActivationMode.CaptureScreen:
+                await StartCaptureAsync(shortcut);
+                break;
+            case PromptActivationMode.ForegroundSelection:
+                await RunForegroundPromptAsync(shortcut);
+                break;
+            case PromptActivationMode.TextDialog:
+                await RunTextDialogPromptAsync(shortcut);
+                break;
+        }
+    }
+
+    private async System.Threading.Tasks.Task RunForegroundPromptAsync(PromptShortcutConfiguration shortcut)
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var capture = await _textService.CaptureAsync();
+            if (string.IsNullOrWhiteSpace(capture.Text))
+            {
+                await ShowMessageAsync("No text selection or clipboard text found.");
+                return;
+            }
+
+            try
+            {
+                using var llm = new LlmService();
+                var extra = string.IsNullOrWhiteSpace(shortcut.Prompt)
+                    ? PromptShortcutConfiguration.DefaultProofreadPrompt
+                    : shortcut.Prompt;
+                var systemPrompt = ComposeSystemPrompt(extra);
+                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    await ShowMessageAsync("(empty response)");
+                    return;
+                }
+
+                if (capture.HasSelection)
+                {
+                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
+                }
+                else
+                {
+                    await _textService.SetClipboardTextAsync(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync($"Error: {ex.Message}");
+            }
+        });
+    }
+
+    private async System.Threading.Tasks.Task RunTextDialogPromptAsync(PromptShortcutConfiguration shortcut)
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow;
+            var dialog = new TextPromptDialog
+            {
+                Title = string.IsNullOrWhiteSpace(shortcut.Name) ? "Prompt" : shortcut.Name,
+                InputText = shortcut.Prefill ?? string.Empty
+            };
+            var input = await dialog.ShowDialog<string?>(owner);
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return;
+            }
+
+            try
+            {
+                using var llm = new LlmService();
+                var systemPrompt = ComposeSystemPrompt(string.IsNullOrWhiteSpace(shortcut.Prompt) ? null : shortcut.Prompt);
+                var response = await llm.SendAsync(input, systemPrompt: systemPrompt);
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    await ShowMessageAsync("(empty response)");
+                    return;
+                }
+
+                await _textService.SetClipboardTextAsync(response);
+                var dlg = new ResponseDialog { ResponseText = response };
+                await dlg.ShowDialog(owner);
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync($"Error: {ex.Message}");
+            }
+        });
+    }
+
     private async System.Threading.Tasks.Task TestBackendAsync()
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
@@ -131,84 +227,6 @@ public partial class App : global::Avalonia.Application
             catch (Exception ex)
             {
                 dlg.ResponseText = $"Error: {ex.Message}";
-            }
-        });
-    }
-
-    private async System.Threading.Tasks.Task StartProofreadSilentFlow()
-    {
-        await Dispatcher.UIThread.InvokeAsync(async () =>
-        {
-            var capture = await _textService.CaptureAsync();
-            if (string.IsNullOrWhiteSpace(capture.Text))
-            {
-                await ShowMessageAsync("No text selection or clipboard text found.");
-                return;
-            }
-
-            try
-            {
-                using var llm = new LlmService();
-                var extra = string.IsNullOrWhiteSpace(_store.Current.ProofreadPrompt) ? ProofreadPrompt : _store.Current.ProofreadPrompt;
-                var systemPrompt = ComposeSystemPrompt(extra);
-                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    await ShowMessageAsync("(empty response)");
-                    return;
-                }
-
-                if (capture.HasSelection)
-                {
-                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
-                }
-                else
-                {
-                    await _textService.SetClipboardTextAsync(response);
-                }
-            }
-            catch (Exception ex)
-            {
-                await ShowMessageAsync($"Error: {ex.Message}");
-            }
-        });
-    }
-
-    private async System.Threading.Tasks.Task StartTranslateSilentFlow()
-    {
-        await Dispatcher.UIThread.InvokeAsync(async () =>
-        {
-            var capture = await _textService.CaptureAsync();
-            if (string.IsNullOrWhiteSpace(capture.Text))
-            {
-                await ShowMessageAsync("No text selection or clipboard text found.");
-                return;
-            }
-
-            try
-            {
-                using var llm = new LlmService();
-                var extra = string.IsNullOrWhiteSpace(_store.Current.TranslatePrompt) ? TranslatePrompt : _store.Current.TranslatePrompt;
-                var systemPrompt = ComposeSystemPrompt(extra);
-                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    await ShowMessageAsync("(empty response)");
-                    return;
-                }
-
-                if (capture.HasSelection)
-                {
-                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
-                }
-                else
-                {
-                    await _textService.SetClipboardTextAsync(response);
-                }
-            }
-            catch (Exception ex)
-            {
-                await ShowMessageAsync($"Error: {ex.Message}");
             }
         });
     }
@@ -230,60 +248,17 @@ public partial class App : global::Avalonia.Application
         }
 
         _hotkey.Clear();
-        _hotkey.TryRegister(_store.Current.Hotkey, () => _ = StartCaptureAsync());
-        _hotkey.TryRegister(_store.Current.ProofreadHotkey, () => _ = StartProofreadSilentFlow());
-        _hotkey.TryRegister(_store.Current.TranslateHotkey, () => _ = StartTranslateSilentFlow());
-    }
-
-    private async System.Threading.Tasks.Task StartTextWorkflowAsync(TextWorkflowMode mode)
-    {
-        await Dispatcher.UIThread.InvokeAsync(async () =>
+        foreach (var prompt in _store.Current.PromptShortcuts)
         {
-            var capture = await _textService.CaptureAsync();
-            if (string.IsNullOrWhiteSpace(capture.Text))
+            if (string.IsNullOrWhiteSpace(prompt.Hotkey))
             {
-                await ShowMessageAsync("No text selection or clipboard text found.");
-                return;
+                continue;
             }
 
-            var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow;
-            var status = mode == TextWorkflowMode.Proofread ? "Proofreading text…" : "Translating text…";
-            var dialog = new ResponseDialog { ResponseText = status };
-            _ = dialog.ShowDialog(owner);
-
-            try
-            {
-                using var llm = new LlmService();
-                var proof = _store.Current.ProofreadPrompt;
-                var transl = _store.Current.TranslatePrompt;
-                var systemPrompt = ComposeSystemPrompt(mode == TextWorkflowMode.Proofread ? proof : transl);
-                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
-                if (string.IsNullOrWhiteSpace(response))
-                {
-                    dialog.ResponseText = "(empty response)";
-                    return;
-                }
-
-                dialog.ResponseText = response;
-
-                if (capture.HasSelection)
-                {
-                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
-                }
-                else
-                {
-                    await _textService.SetClipboardTextAsync(response);
-                }
-            }
-            catch (Exception ex)
-            {
-                dialog.ResponseText = $"Error: {ex.Message}";
-            }
-        });
+            var local = prompt;
+            _hotkey.TryRegister(local.Hotkey, () => _ = ExecutePromptAsync(local));
+        }
     }
-
-    private static readonly string ProofreadPrompt = "Proofread and improve grammar, spelling, and clarity. Preserve tone and meaning. Return only the corrected text. Keep formatting, newlines, tabs etc. exactly as in the original text.";
-    private static readonly string TranslatePrompt = "If the text is english, translate it to German. If the text is German, translate it to English. All while preserving meaning, tone, and formatting. Return only the translation.";
 
     private string ComposeSystemPrompt(string? extra = null) => SystemPromptBuilder.Build(_store.Current.Language ?? "English", extra);
 
@@ -301,6 +276,7 @@ public partial class App : global::Avalonia.Application
         Dispatcher.UIThread.Post(() =>
         {
             _tray?.UpdateIcon(_store.Current.IconAsset);
+            _tray?.UpdatePrompts(_store.Current.PromptShortcuts);
             if (_hiddenWindow is not null)
             {
                 _hiddenWindow.Icon = IconProvider.LoadWindowIcon(_store.Current.IconAsset);

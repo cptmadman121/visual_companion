@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -15,6 +14,7 @@ public partial class ShellViewModel : ObservableObject
     private readonly TrayIconService _trayIconService;
     private readonly HotkeyService _hotkeyService;
     private readonly CaptureWorkflow _captureWorkflow;
+    private readonly TextWorkflow _textWorkflow;
     private readonly DialogService _dialogService;
     private readonly ConfigurationManager _configurationManager;
     private readonly ILogger<ShellViewModel> _logger;
@@ -23,6 +23,7 @@ public partial class ShellViewModel : ObservableObject
         TrayIconService trayIconService,
         HotkeyService hotkeyService,
         CaptureWorkflow captureWorkflow,
+        TextWorkflow textWorkflow,
         DialogService dialogService,
         ConfigurationManager configurationManager,
         ILogger<ShellViewModel> logger)
@@ -30,6 +31,7 @@ public partial class ShellViewModel : ObservableObject
         _trayIconService = trayIconService;
         _hotkeyService = hotkeyService;
         _captureWorkflow = captureWorkflow;
+        _textWorkflow = textWorkflow;
         _dialogService = dialogService;
         _configurationManager = configurationManager;
         _logger = logger;
@@ -38,7 +40,7 @@ public partial class ShellViewModel : ObservableObject
     public void Initialize()
     {
         _trayIconService.Initialize();
-        _trayIconService.HotkeyTriggered += OnTrayHotkeyTriggered;
+        _trayIconService.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut);
         _trayIconService.TestBackendRequested += async (_, _) => await TestBackendAsync();
         _trayIconService.SettingsRequested += (_, _) => OpenSettings();
         _trayIconService.CopyLastResponseRequested += (_, _) => CopyLastResponse();
@@ -50,34 +52,50 @@ public partial class ShellViewModel : ObservableObject
             app.Shutdown();
         };
 
-        RegisterHotkey();
+        RegisterHotkeys();
+        _trayIconService.UpdatePrompts(_configurationManager.CurrentConfiguration.PromptShortcuts);
     }
 
-    private void RegisterHotkey()
+    private void RegisterHotkeys()
     {
         var config = _configurationManager.CurrentConfiguration;
-        if (!_hotkeyService.TryRegister(config.Hotkey))
+        _hotkeyService.Clear();
+
+        foreach (var shortcut in config.PromptShortcuts)
         {
-            _logger.LogWarning("Unable to register hotkey {Hotkey}.", config.Hotkey);
-            System.Windows.MessageBox.Show($"Der Hotkey {config.Hotkey} konnte nicht registriert werden.",
-                "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        else
-        {
-            _hotkeyService.HotkeyPressed += OnHotkeyPressed;
+            if (string.IsNullOrWhiteSpace(shortcut.Hotkey))
+            {
+                continue;
+            }
+
+            var localShortcut = shortcut;
+            if (!_hotkeyService.TryRegister(localShortcut.Hotkey, () => _ = ExecutePromptAsync(localShortcut)))
+            {
+                _logger.LogWarning("Unable to register hotkey {Hotkey}.", localShortcut.Hotkey);
+                System.Windows.MessageBox.Show($"Der Hotkey {localShortcut.Hotkey} konnte nicht registriert werden.",
+                    "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
     }
 
-    private async void OnHotkeyPressed(object? sender, EventArgs e)
+    private async Task ExecutePromptAsync(PromptShortcutConfiguration shortcut)
     {
         try
         {
-            await _captureWorkflow.ExecuteAsync();
+            switch (shortcut.Activation)
+            {
+                case PromptActivationMode.CaptureScreen:
+                    await _captureWorkflow.ExecuteAsync(shortcut);
+                    break;
+                default:
+                    await _textWorkflow.ExecuteAsync(shortcut);
+                    break;
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Capture workflow failed");
-            System.Windows.MessageBox.Show($"Der Capture-Workflow ist fehlgeschlagen: {ex.Message}",
+            _logger.LogError(ex, "Prompt execution failed");
+            System.Windows.MessageBox.Show($"Die Ausführung des Hotkeys ist fehlgeschlagen: {ex.Message}",
                 "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -99,6 +117,9 @@ public partial class ShellViewModel : ObservableObject
     private void OpenSettings()
     {
         _dialogService.ShowSettingsDialog();
+        _configurationManager.Load();
+        RegisterHotkeys();
+        _trayIconService.UpdatePrompts(_configurationManager.CurrentConfiguration.PromptShortcuts);
     }
 
     private void CopyLastResponse()
@@ -111,8 +132,4 @@ public partial class ShellViewModel : ObservableObject
         _trayIconService.OpenLogsFolder();
     }
 
-    private void OnTrayHotkeyTriggered(object? sender, EventArgs e)
-    {
-        OnHotkeyPressed(sender, e);
-    }
 }
