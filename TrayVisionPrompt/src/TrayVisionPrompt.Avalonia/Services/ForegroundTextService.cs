@@ -62,25 +62,36 @@ public sealed class ForegroundTextService
         {
             return TextCaptureResult.Empty;
         }
-        // Attempt a direct copy on the focused control first; fall back to Ctrl+C
+        // Attempt a direct copy on the focused control first; then keep nudging with Ctrl+C
         SendCopy(foreground);
 
         string? capturedText = null;
         var start = Environment.TickCount64;
-        while (Environment.TickCount64 - start < 1500)
+        var nudgedAt = start;
+        while (Environment.TickCount64 - start < 2500)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (Clipboard.ContainsText())
+
+            try
             {
-                var text = Clipboard.GetText();
-                if (!string.Equals(text, sentinel, StringComparison.Ordinal))
+                var data = Clipboard.GetDataObject();
+                var maybe = TryGetText(data);
+                if (!string.IsNullOrEmpty(maybe) && !string.Equals(maybe, sentinel, StringComparison.Ordinal))
                 {
-                    capturedText = text;
+                    capturedText = maybe;
                     break;
                 }
             }
+            catch { /* ignore clipboard probe errors */ }
 
-            Thread.Sleep(20);
+            // Re-issue Ctrl+C occasionally in case the target app needs a user gesture
+            if (Environment.TickCount64 - nudgedAt > 150)
+            {
+                SendCopyShortcut(foreground);
+                nudgedAt = Environment.TickCount64;
+            }
+
+            Thread.Sleep(30);
         }
 
         RestoreClipboard(originalData);

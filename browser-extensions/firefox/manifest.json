@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "TrayVisionPrompt",
+  "version": "0.1.0",
+  "description": "Send selected text to TrayVisionPrompt and replace it with the response.",
+  "permissions": ["contextMenus", "activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1:27124/*"],
+  "background": { "scripts": ["background.js"] },
+  "browser_specific_settings": {
+    "gecko": { "id": "trayvisionprompt@example.com", "strict_min_version": "109.0" }
+  }
+}
+

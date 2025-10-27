@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
@@ -35,10 +36,14 @@ public sealed class WinHotkeyRegistrar : NativeWindow, IDisposable
                 _handlers[id] = handler;
                 return true;
             }
+            else
+            {
+                Debug.WriteLine($"RegisterHotKey failed for '{hotkey}' (mods={mods}, key={key})");
+            }
         }
         catch
         {
-            // ignored
+            Debug.WriteLine($"Failed to register hotkey '{hotkey}'");
         }
 
         return false;

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.IO;
 using System.Linq;
 using System.Windows.Input;
@@ -9,7 +11,7 @@ using TrayVisionPrompt.Configuration; // core AppConfiguration
 
 namespace TrayVisionPrompt.Avalonia.ViewModels;
 
-public class SettingsViewModel
+public class SettingsViewModel : INotifyPropertyChanged
 {
     private readonly ConfigurationStore _store = new();
 
@@ -37,6 +39,7 @@ public class SettingsViewModel
         {
             _selectedPrompt = value;
             _removePromptCommand?.RaiseCanExecuteChanged();
+            OnPropertyChanged();
         }
     }
 
@@ -60,6 +63,10 @@ public class SettingsViewModel
         AddPromptCommand = new RelayCommand(_ => AddPrompt());
         _removePromptCommand = new RelayCommand(_ => RemoveSelectedPrompt(), _ => SelectedPrompt != null);
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private void FromConfig(AppConfiguration c)
     {
