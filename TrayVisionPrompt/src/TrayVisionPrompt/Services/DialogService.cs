@@ -28,9 +28,9 @@ public class DialogService
         return null;
     }
 
-    public InstructionContext? ShowInstructionDialog(CaptureResult capture)
+    public InstructionContext? ShowInstructionDialog(CaptureResult capture, string? defaultPrompt = null, string? title = null, string? shortcutId = null)
     {
-        var dialog = new InstructionDialog(capture);
+        var dialog = new InstructionDialog(capture, defaultPrompt, title, shortcutId);
         dialog.Owner = System.Windows.Application.Current.MainWindow;
         if (dialog.ShowDialog() == true)
         {

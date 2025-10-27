@@ -32,7 +32,7 @@ public class CaptureWorkflow
         _logger = logger;
     }
 
-    public async Task ExecuteAsync()
+    public async Task ExecuteAsync(PromptShortcutConfiguration? shortcut = null)
     {
         var captureResult = _dialogService.ShowAnnotationOverlay();
         if (captureResult == null)
@@ -41,7 +41,12 @@ public class CaptureWorkflow
             return;
         }
 
-        var instruction = _dialogService.ShowInstructionDialog(captureResult);
+        var dialogTitle = shortcut?.Name;
+        var instruction = _dialogService.ShowInstructionDialog(
+            captureResult,
+            shortcut?.Prompt,
+            dialogTitle,
+            shortcut?.Id);
         if (instruction == null)
         {
             _logger.LogInformation("Instruction dialog cancelled");
@@ -88,6 +93,11 @@ public class CaptureWorkflow
                 ["Preset"] = instruction.SelectedPreset ?? "custom"
             }
         };
+
+        if (!string.IsNullOrWhiteSpace(instruction.ShortcutId))
+        {
+            request.Metadata["ShortcutId"] = instruction.ShortcutId!;
+        }
 
         if (!configuration.UseVision && configuration.UseOcrFallback && captureResult.OcrText != null)
         {

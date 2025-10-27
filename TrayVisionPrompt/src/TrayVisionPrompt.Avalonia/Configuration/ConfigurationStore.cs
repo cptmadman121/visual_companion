@@ -48,6 +48,7 @@ public class ConfigurationStore
             if (!File.Exists(ConfigPath))
             {
                 _current = new AppConfiguration();
+                _current.EnsureDefaults();
                 SaveInternal();
                 _loaded = true;
                 return;
@@ -59,16 +60,19 @@ public class ConfigurationStore
                 var cfg = JsonSerializer.Deserialize<AppConfiguration>(json);
                 if (cfg != null)
                 {
+                    cfg.EnsureDefaults();
                     _current = cfg;
                 }
                 else
                 {
                     _current = new AppConfiguration();
+                    _current.EnsureDefaults();
                 }
             }
             catch
             {
                 _current = new AppConfiguration();
+                _current.EnsureDefaults();
             }
 
             _loaded = true;
@@ -87,6 +91,7 @@ public class ConfigurationStore
 
     private static void SaveInternal()
     {
+        _current.SyncLegacyHotkeys();
         var json = JsonSerializer.Serialize(_current, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(ConfigPath, json);
     }

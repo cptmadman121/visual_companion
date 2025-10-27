@@ -28,6 +28,8 @@ public class ConfigurationManager
         if (!File.Exists(_configPath))
         {
             _logger.LogInformation("Configuration file not found. Creating default at {Path}", _configPath);
+            CurrentConfiguration = new AppConfiguration();
+            CurrentConfiguration.EnsureDefaults();
             Save();
             return;
         }
@@ -38,18 +40,26 @@ public class ConfigurationManager
             var config = JsonSerializer.Deserialize<AppConfiguration>(json);
             if (config != null)
             {
+                config.EnsureDefaults();
                 CurrentConfiguration = config;
+            }
+            else
+            {
+                CurrentConfiguration = new AppConfiguration();
+                CurrentConfiguration.EnsureDefaults();
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load configuration. Using defaults");
             CurrentConfiguration = new AppConfiguration();
+            CurrentConfiguration.EnsureDefaults();
         }
     }
 
     public void Save()
     {
+        CurrentConfiguration.SyncLegacyHotkeys();
         var json = JsonSerializer.Serialize(CurrentConfiguration, new JsonSerializerOptions
         {
             WriteIndented = true

@@ -7,12 +7,6 @@
       <TabItem Header="General">
         <ScrollViewer>
           <StackPanel Spacing="8">
-            <TextBlock Classes="caption" Text="Capture Hotkey"/>
-            <TextBox Watermark="Ctrl+Shift+S" Text="{Binding Hotkey, Mode=TwoWay}"/>
-            <TextBlock Classes="caption" Text="Proofread Hotkey"/>
-            <TextBox Watermark="Ctrl+Shift+P" Text="{Binding ProofreadHotkey, Mode=TwoWay}"/>
-            <TextBlock Classes="caption" Text="Translate Hotkey"/>
-            <TextBox Watermark="Ctrl+Shift+T" Text="{Binding TranslateHotkey, Mode=TwoWay}"/>
             <TextBlock Classes="caption" Text="Language"/>
             <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language, Mode=TwoWay}"/>
             <TextBlock Classes="caption" Text="Icon"/>
@@ -43,12 +37,36 @@
       <TabItem Header="Prompts">
         <ScrollViewer>
           <StackPanel Spacing="8">
-            <TextBlock Classes="caption" Text="Default Capture Instruction"/>
+            <TextBlock Classes="caption" Text="Prompts"/>
+            <ListBox ItemsSource="{Binding Prompts}" SelectedItem="{Binding SelectedPrompt, Mode=TwoWay}" Height="140">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Name}"/>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+              <Button Content="Add" Command="{Binding AddPromptCommand}"/>
+              <Button Content="Remove" Command="{Binding RemovePromptCommand}"/>
+            </StackPanel>
+
+            <TextBlock Classes="caption" Text="Name"/>
+            <TextBox Text="{Binding SelectedPrompt.Name, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Hotkey"/>
+            <TextBox Text="{Binding SelectedPrompt.Hotkey, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Activation"/>
+            <ComboBox ItemsSource="{Binding ActivationModes}" SelectedItem="{Binding SelectedPrompt.Activation, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Prompt"/>
+            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="120" Text="{Binding SelectedPrompt.Prompt, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Dialog Prefill"/>
+            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="80" Text="{Binding SelectedPrompt.Prefill, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Fallback Capture Instruction"/>
             <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="80" Text="{Binding CaptureInstruction, Mode=TwoWay}"/>
-            <TextBlock Classes="caption" Text="Proofread Prompt"/>
-            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="120" Text="{Binding ProofreadPrompt, Mode=TwoWay}"/>
-            <TextBlock Classes="caption" Text="Translate Prompt"/>
-            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="120" Text="{Binding TranslatePrompt, Mode=TwoWay}"/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

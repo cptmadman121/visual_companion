@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows.Input;
@@ -12,9 +13,6 @@ public class SettingsViewModel
 {
     private readonly ConfigurationStore _store = new();
 
-    public string Hotkey { get; set; } = "Ctrl+Shift+S";
-    public string ProofreadHotkey { get; set; } = "Ctrl+Shift+P";
-    public string TranslateHotkey { get; set; } = "Ctrl+Shift+T";
     public string Backend { get; set; } = "ollama";
     public string Endpoint { get; set; } = "http://localhost:11434";
     public string Model { get; set; } = "llama3";
@@ -26,16 +24,30 @@ public class SettingsViewModel
     public string? Proxy { get; set; }
     public string Language { get; set; } = "English";
     public IReadOnlyList<string> Languages { get; } = new[] { "English", "German" };
+    public IReadOnlyList<PromptActivationMode> ActivationModes { get; } = Enum.GetValues<PromptActivationMode>();
     public IReadOnlyList<IconOption> AvailableIcons { get; }
     public IconOption? SelectedIcon { get; set; }
 
-    // Prompts
+    public ObservableCollection<PromptShortcutConfiguration> Prompts { get; } = new();
+    private PromptShortcutConfiguration? _selectedPrompt;
+    public PromptShortcutConfiguration? SelectedPrompt
+    {
+        get => _selectedPrompt;
+        set
+        {
+            _selectedPrompt = value;
+            _removePromptCommand?.RaiseCanExecuteChanged();
+        }
+    }
+
     public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";
-    public string ProofreadPrompt { get; set; } = "";
-    public string TranslatePrompt { get; set; } = "";
 
     public ICommand SaveCommand { get; }
     public ICommand CancelCommand { get; }
+    public ICommand AddPromptCommand { get; }
+    public ICommand RemovePromptCommand => _removePromptCommand;
+
+    private readonly RelayCommand? _removePromptCommand;
 
     public SettingsViewModel()
     {
@@ -45,13 +57,12 @@ public class SettingsViewModel
 
         SaveCommand = new RelayCommand(_ => Save());
         CancelCommand = new RelayCommand(_ => { /* window closes itself */ });
+        AddPromptCommand = new RelayCommand(_ => AddPrompt());
+        _removePromptCommand = new RelayCommand(_ => RemoveSelectedPrompt(), _ => SelectedPrompt != null);
     }
 
     private void FromConfig(AppConfiguration c)
     {
-        Hotkey = c.Hotkey;
-        ProofreadHotkey = c.ProofreadHotkey;
-        TranslateHotkey = c.TranslateHotkey;
         Backend = c.Backend;
         Endpoint = c.Endpoint;
         Model = c.Model;
@@ -63,8 +74,16 @@ public class SettingsViewModel
         Proxy = c.Proxy;
         Language = string.IsNullOrWhiteSpace(c.Language) ? "English" : c.Language;
         CaptureInstruction = string.IsNullOrWhiteSpace(c.CaptureInstruction) ? "Describe the selected region succinctly." : c.CaptureInstruction;
-        ProofreadPrompt = c.ProofreadPrompt;
-        TranslatePrompt = c.TranslatePrompt;
+        Prompts.Clear();
+        foreach (var prompt in c.PromptShortcuts)
+        {
+            Prompts.Add(prompt.Clone());
+        }
+        if (Prompts.Count == 0)
+        {
+            Prompts.Add(PromptShortcutConfiguration.CreateCapture("Capture Screen", c.Hotkey, CaptureInstruction));
+        }
+        SelectedPrompt = Prompts.FirstOrDefault();
         SelectedIcon = AvailableIcons
             .FirstOrDefault(o => string.Equals(o.Key, c.IconAsset, StringComparison.OrdinalIgnoreCase))
             ?? AvailableIcons.FirstOrDefault();
@@ -76,9 +95,6 @@ public class SettingsViewModel
 
     public void Save()
     {
-        _store.Current.Hotkey = Hotkey;
-        _store.Current.ProofreadHotkey = ProofreadHotkey;
-        _store.Current.TranslateHotkey = TranslateHotkey;
         _store.Current.Backend = Backend;
         _store.Current.Endpoint = Endpoint;
         _store.Current.Model = Model;
@@ -90,10 +106,36 @@ public class SettingsViewModel
         _store.Current.Proxy = Proxy;
         _store.Current.Language = Language;
         _store.Current.CaptureInstruction = CaptureInstruction;
-        _store.Current.ProofreadPrompt = string.IsNullOrWhiteSpace(ProofreadPrompt) ? _store.Current.ProofreadPrompt : ProofreadPrompt;
-        _store.Current.TranslatePrompt = string.IsNullOrWhiteSpace(TranslatePrompt) ? _store.Current.TranslatePrompt : TranslatePrompt;
+        _store.Current.PromptShortcuts = Prompts.Select(p => p.Clone()).ToList();
         _store.Current.IconAsset = SelectedIcon?.Key ?? string.Empty;
         _store.Save();
+    }
+
+    private void AddPrompt()
+    {
+        var prompt = PromptShortcutConfiguration.CreateTextSelection("New Prompt", string.Empty, PromptShortcutConfiguration.DefaultProofreadPrompt);
+        Prompts.Add(prompt);
+        SelectedPrompt = prompt;
+    }
+
+    private void RemoveSelectedPrompt()
+    {
+        if (SelectedPrompt is null)
+        {
+            return;
+        }
+
+        var index = Prompts.IndexOf(SelectedPrompt);
+        Prompts.Remove(SelectedPrompt);
+
+        if (Prompts.Count == 0)
+        {
+            SelectedPrompt = null;
+            return;
+        }
+
+        var nextIndex = Math.Clamp(index - 1, 0, Prompts.Count - 1);
+        SelectedPrompt = Prompts[nextIndex];
     }
 
     private static IReadOnlyList<IconOption> LoadAvailableIcons()

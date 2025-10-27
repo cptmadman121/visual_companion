@@ -31,6 +31,7 @@
   <!-- Link the shared AppConfiguration source from the core project to avoid duplication -->
   <ItemGroup>
     <Compile Include="..\TrayVisionPrompt\Configuration\AppConfiguration.cs" Link="Configuration\AppConfiguration.cs" />
+    <Compile Include="..\TrayVisionPrompt\Configuration\PromptShortcutConfiguration.cs" Link="Configuration\PromptShortcutConfiguration.cs" />
   </ItemGroup>
 
   <ItemGroup>

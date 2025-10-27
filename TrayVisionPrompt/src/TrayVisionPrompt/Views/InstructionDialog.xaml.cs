@@ -18,9 +18,11 @@ public partial class InstructionDialog : Window
         { "UI-Text extrahieren", "Extrahiere alle sichtbaren Texte und fasse sie zusammen." },
         { "Code erklÃ¤ren", "ErklÃ¤re den dargestellten Codeabschnitt und mÃ¶gliche Verbesserungen." }
     };
+    private readonly string? _shortcutId;
 
-    public InstructionDialog(CaptureResult captureResult)
+    public InstructionDialog(CaptureResult captureResult, string? defaultPrompt = null, string? title = null, string? shortcutId = null)
     {
+        _shortcutId = shortcutId;
         InitializeComponent();
         // Show preview image
         try
@@ -53,6 +55,16 @@ public partial class InstructionDialog : Window
         };
 
         PresetCombo.SelectedIndex = 0;
+
+        if (!string.IsNullOrWhiteSpace(defaultPrompt))
+        {
+            PromptBox.Text = defaultPrompt;
+        }
+
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            Title = title;
+        }
     }
 
     private void OnOk(object sender, RoutedEventArgs e)
@@ -66,7 +78,8 @@ public partial class InstructionDialog : Window
         InstructionContext = new InstructionContext
         {
             Prompt = PromptBox.Text,
-            SelectedPreset = PresetCombo.SelectedItem as string
+            SelectedPreset = PresetCombo.SelectedItem as string,
+            ShortcutId = _shortcutId
         };
 
         DialogResult = true;

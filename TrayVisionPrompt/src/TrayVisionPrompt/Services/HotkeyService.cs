@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -12,8 +13,9 @@ public class HotkeyService : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
     private readonly ILogger _logger;
+    private readonly Dictionary<int, Action?> _callbacks = new();
     private HwndSource? _source;
-    private int _hotkeyId = 0;
+    private int _nextId = 1;
 
     public event EventHandler? HotkeyPressed;
 
@@ -22,25 +24,25 @@ public class HotkeyService : IDisposable
         _logger = logger;
     }
 
-    public bool TryRegister(string hotkeyString)
+    public bool TryRegister(string hotkeyString, Action? callback = null)
     {
         try
         {
             var hotkey = HotkeyParser.Parse(hotkeyString);
-            _hotkeyId = GetHashCode();
-            if (Application.Current.MainWindow == null)
+            EnsureSource();
+            if (_source == null)
             {
-                throw new InvalidOperationException("Main window is not available for hotkey registration.");
+                return false;
             }
 
-            _source = HwndSource.FromHwnd(new WindowInteropHelper(Application.Current.MainWindow).Handle);
-            _source.AddHook(WndProc);
-            if (!RegisterHotKey(_source.Handle, _hotkeyId, hotkey.Modifiers, hotkey.VirtualKeyCode))
+            var id = _nextId++;
+            if (!RegisterHotKey(_source.Handle, id, hotkey.Modifiers, hotkey.VirtualKeyCode))
             {
                 _logger.LogWarning("RegisterHotKey failed for {Hotkey}", hotkeyString);
                 return false;
             }
 
+            _callbacks[id] = callback;
             return true;
         }
         catch (Exception ex)
@@ -50,12 +52,58 @@ public class HotkeyService : IDisposable
         }
     }
 
+    public void Clear()
+    {
+        if (_source == null)
+        {
+            _callbacks.Clear();
+            return;
+        }
+
+        foreach (var id in _callbacks.Keys)
+        {
+            UnregisterHotKey(_source.Handle, id);
+        }
+        _callbacks.Clear();
+    }
+
+    private void EnsureSource()
+    {
+        if (_source != null)
+        {
+            return;
+        }
+
+        if (Application.Current.MainWindow == null)
+        {
+            throw new InvalidOperationException("Main window is not available for hotkey registration.");
+        }
+
+        _source = HwndSource.FromHwnd(new WindowInteropHelper(Application.Current.MainWindow).Handle);
+        _source.AddHook(WndProc);
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg == WM_HOTKEY && wParam.ToInt32() == _hotkeyId)
+        if (msg == WM_HOTKEY)
         {
-            HotkeyPressed?.Invoke(this, EventArgs.Empty);
-            handled = true;
+            var id = wParam.ToInt32();
+            if (_callbacks.TryGetValue(id, out var callback))
+            {
+                try
+                {
+                    callback?.Invoke();
+                    if (callback == null)
+                    {
+                        HotkeyPressed?.Invoke(this, EventArgs.Empty);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error executing hotkey callback");
+                }
+                handled = true;
+            }
         }
 
         return IntPtr.Zero;
@@ -63,11 +111,12 @@ public class HotkeyService : IDisposable
 
     public void Dispose()
     {
+        Clear();
         if (_source != null)
         {
-            UnregisterHotKey(_source.Handle, _hotkeyId);
             _source.RemoveHook(WndProc);
             _source.Dispose();
+            _source = null;
         }
     }
 

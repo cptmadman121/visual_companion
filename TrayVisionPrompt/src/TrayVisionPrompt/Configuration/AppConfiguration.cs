@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 
 namespace TrayVisionPrompt.Configuration;
@@ -12,6 +15,9 @@ public class AppConfiguration
 
     [JsonPropertyName("translateHotkey")]
     public string TranslateHotkey { get; set; } = "Ctrl+Shift+T";
+
+    [JsonPropertyName("promptShortcuts")]
+    public List<PromptShortcutConfiguration> PromptShortcuts { get; set; } = new();
 
     [JsonPropertyName("language")]
     public string Language { get; set; } = "English";
@@ -61,4 +67,64 @@ public class AppConfiguration
 
     [JsonPropertyName("translatePrompt")]
     public string TranslatePrompt { get; set; } = "If the text is english, translate it to German. If the text is German, translate it to English. All while preserving meaning, tone, and formatting. Return only the translation.";
+
+    public void EnsureDefaults()
+    {
+        if (PromptShortcuts.Count == 0)
+        {
+            PromptShortcuts = new List<PromptShortcutConfiguration>
+            {
+                PromptShortcutConfiguration.CreateCapture(
+                    "Capture Screen",
+                    string.IsNullOrWhiteSpace(Hotkey) ? "Ctrl+Shift+S" : Hotkey,
+                    string.IsNullOrWhiteSpace(CaptureInstruction) ? "Describe the selected region succinctly." : CaptureInstruction),
+                PromptShortcutConfiguration.CreateTextSelection(
+                    "Proofread Selection",
+                    string.IsNullOrWhiteSpace(ProofreadHotkey) ? "Ctrl+Shift+P" : ProofreadHotkey,
+                    string.IsNullOrWhiteSpace(ProofreadPrompt) ? PromptShortcutConfiguration.DefaultProofreadPrompt : ProofreadPrompt),
+                PromptShortcutConfiguration.CreateTextSelection(
+                    "Translate Selection",
+                    string.IsNullOrWhiteSpace(TranslateHotkey) ? "Ctrl+Shift+T" : TranslateHotkey,
+                    string.IsNullOrWhiteSpace(TranslatePrompt) ? PromptShortcutConfiguration.DefaultTranslatePrompt : TranslatePrompt),
+                PromptShortcutConfiguration.CreateTextSelection(
+                    "Anonymize Selection",
+                    "Ctrl+Shift+A",
+                    PromptShortcutConfiguration.DefaultAnonymizePrompt)
+            };
+        }
+
+        SyncLegacyHotkeys();
+    }
+
+    public void SyncLegacyHotkeys()
+    {
+        if (PromptShortcuts.Count == 0)
+        {
+            return;
+        }
+
+        var capture = PromptShortcuts.FirstOrDefault(p => p.Activation == PromptActivationMode.CaptureScreen);
+        if (capture != null)
+        {
+            Hotkey = capture.Hotkey;
+            if (!string.IsNullOrWhiteSpace(capture.Prompt))
+            {
+                CaptureInstruction = capture.Prompt;
+            }
+        }
+
+        var proofread = PromptShortcuts.FirstOrDefault(p => p.Name.Contains("Proofread", StringComparison.OrdinalIgnoreCase));
+        if (proofread != null)
+        {
+            ProofreadHotkey = proofread.Hotkey;
+            ProofreadPrompt = proofread.Prompt;
+        }
+
+        var translate = PromptShortcuts.FirstOrDefault(p => p.Name.Contains("Translate", StringComparison.OrdinalIgnoreCase));
+        if (translate != null)
+        {
+            TranslateHotkey = translate.Hotkey;
+            TranslatePrompt = translate.Prompt;
+        }
+    }
 }
