@@ -19,6 +19,7 @@ public partial class App : global::Avalonia.Application
     private Window? _hiddenWindow;
     private readonly ConfigurationStore _store = new();
     private readonly ForegroundTextService _textService = new();
+    private LocalApiServer? _api;
 
     public override void Initialize()
     {
@@ -57,6 +58,10 @@ public partial class App : global::Avalonia.Application
 
             _hotkey = new WinHotkeyRegistrar();
             RegisterHotkeys();
+
+            // Start local API server for browser extensions
+            _api = new LocalApiServer(27124);
+            _api.Start();
         }
 
         base.OnFrameworkInitializationCompleted();
