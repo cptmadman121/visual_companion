@@ -181,6 +181,41 @@ public sealed class ForegroundTextService
         }
     }
 
+    private static void SendCopy(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        BringToForeground(windowHandle);
+        // Try sending WM_COPY to the currently focused control
+        var target = GetFocusedControl(windowHandle);
+        if (target != IntPtr.Zero)
+        {
+            SendMessage(target, WM_COPY, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(10);
+        }
+        SendCopyShortcut(windowHandle);
+    }
+
+    private static void SendPaste(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        BringToForeground(windowHandle);
+        var target = GetFocusedControl(windowHandle);
+        if (target != IntPtr.Zero)
+        {
+            SendMessage(target, WM_PASTE, IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(10);
+        }
+        SendPasteShortcut(windowHandle);
+    }
+
     private static void SendCopyShortcut(IntPtr windowHandle)
     {
         BringToForeground(windowHandle);
@@ -193,34 +228,6 @@ public sealed class ForegroundTextService
         BringToForeground(windowHandle);
         ReleaseActiveModifiers();
         SendShortcut(Keys.ControlKey, Keys.V);
-    }
-
-    private static void SendCopy(IntPtr windowHandle)
-    {
-        BringToForeground(windowHandle);
-        // Try sending WM_COPY to the currently focused control
-        var target = GetFocusedControl(windowHandle);
-        if (target != IntPtr.Zero)
-        {
-            SendMessage(target, WM_COPY, IntPtr.Zero, IntPtr.Zero);
-            Thread.Sleep(20);
-            return;
-        }
-        // Fallback to keyboard shortcut
-        SendCopyShortcut(windowHandle);
-    }
-
-    private static void SendPaste(IntPtr windowHandle)
-    {
-        BringToForeground(windowHandle);
-        var target = GetFocusedControl(windowHandle);
-        if (target != IntPtr.Zero)
-        {
-            SendMessage(target, WM_PASTE, IntPtr.Zero, IntPtr.Zero);
-            Thread.Sleep(20);
-            return;
-        }
-        SendPasteShortcut(windowHandle);
     }
 
     private static void SendShortcut(Keys modifier, Keys key)

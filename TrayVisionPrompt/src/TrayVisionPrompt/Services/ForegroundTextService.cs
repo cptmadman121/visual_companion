@@ -196,20 +196,28 @@ public sealed class ForegroundTextService
 
     private static void SendCopy(IntPtr windowHandle)
     {
-        BringToForeground(windowHandle);
-        if (!SendMessage(windowHandle, WM_COPY, IntPtr.Zero, IntPtr.Zero))
+        if (windowHandle == IntPtr.Zero)
         {
-            SendCopyShortcut(windowHandle);
+            return;
         }
+
+        BringToForeground(windowHandle);
+        PostMessage(windowHandle, WM_COPY, IntPtr.Zero, IntPtr.Zero);
+        Thread.Sleep(10);
+        SendCopyShortcut(windowHandle);
     }
 
     private static void SendPaste(IntPtr windowHandle)
     {
-        BringToForeground(windowHandle);
-        if (!SendMessage(windowHandle, WM_PASTE, IntPtr.Zero, IntPtr.Zero))
+        if (windowHandle == IntPtr.Zero)
         {
-            SendPasteShortcut(windowHandle);
+            return;
         }
+
+        BringToForeground(windowHandle);
+        PostMessage(windowHandle, WM_PASTE, IntPtr.Zero, IntPtr.Zero);
+        Thread.Sleep(10);
+        SendPasteShortcut(windowHandle);
     }
 
     private static void BringToForeground(IntPtr hWnd)
@@ -272,11 +280,6 @@ public sealed class ForegroundTextService
         }
 
         return null;
-    }
-
-    private static bool SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam)
-    {
-        return PostMessage(hWnd, msg, wParam, lParam);
     }
 
     private const int WM_COPY = 0x0301;
