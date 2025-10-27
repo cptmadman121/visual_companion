@@ -248,6 +248,7 @@ public partial class App : global::Avalonia.Application
         }
 
         _hotkey.Clear();
+        var failed = new System.Collections.Generic.List<string>();
         foreach (var prompt in _store.Current.PromptShortcuts)
         {
             if (string.IsNullOrWhiteSpace(prompt.Hotkey))
@@ -256,7 +257,15 @@ public partial class App : global::Avalonia.Application
             }
 
             var local = prompt;
-            _hotkey.TryRegister(local.Hotkey, () => _ = ExecutePromptAsync(local));
+            if (!_hotkey.TryRegister(local.Hotkey, () => _ = ExecutePromptAsync(local)))
+            {
+                failed.Add($"{local.Name} ({local.Hotkey})");
+            }
+        }
+
+        if (failed.Count > 0)
+        {
+            _ = ShowMessageAsync("Some hotkeys could not be registered. Change them in Settings.\n" + string.Join("\n", failed));
         }
     }
 
