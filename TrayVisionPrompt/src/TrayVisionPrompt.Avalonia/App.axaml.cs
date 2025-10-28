@@ -81,7 +81,7 @@ public partial class App : global::Avalonia.Application
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
             var annot = new AnnotationWindow();
-            await annot.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
+            await annot.ShowDialog(GetOwnerWindow());
 
             if (annot.CapturedImageBase64 is string img && !string.IsNullOrWhiteSpace(img))
             {
@@ -95,11 +95,11 @@ public partial class App : global::Avalonia.Application
                     ask.Title = shortcut!.Name;
                 }
                 ask.SetThumbnail(img);
-                await ask.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
+                await ask.ShowDialog(GetOwnerWindow());
                 if (!ask.Confirmed) return;
 
                 var resp = new ResponseDialog { ResponseText = "Analyzing selection… contacting backend…" };
-                _ = resp.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
+                _ = resp.ShowDialog(GetOwnerWindow());
 
                 try
                 {
@@ -112,6 +112,7 @@ public partial class App : global::Avalonia.Application
                     var prompt = string.IsNullOrWhiteSpace(ocr) ? ask.Instruction : $"{ask.Instruction}\n\nOCR-Fallback:\n{ocr}";
                     using var llm = new LlmService();
                     var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: ComposeSystemPrompt());
+                    text = TextUtilities.TrimTrailingNewlines(text);
                     resp.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
                 }
                 catch (Exception ex)
@@ -157,6 +158,11 @@ public partial class App : global::Avalonia.Application
                     : shortcut.Prompt;
                 var systemPrompt = ComposeSystemPrompt(extra);
                 var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
+                response = TextUtilities.TrimTrailingNewlines(response);
+                if (IsTranslateShortcut(shortcut))
+                {
+                    response = TextUtilities.SanitizeTranslationResponse(response, capture.Text!);
+                }
                 if (string.IsNullOrWhiteSpace(response))
                 {
                     await ShowMessageAsync("(empty response)");
@@ -183,7 +189,7 @@ public partial class App : global::Avalonia.Application
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow;
+            var owner = GetOwnerWindow();
             var dialog = new TextPromptDialog
             {
                 Title = string.IsNullOrWhiteSpace(shortcut.Name) ? "Prompt" : shortcut.Name,
@@ -200,6 +206,7 @@ public partial class App : global::Avalonia.Application
                 using var llm = new LlmService();
                 var systemPrompt = ComposeSystemPrompt(string.IsNullOrWhiteSpace(shortcut.Prompt) ? null : shortcut.Prompt);
                 var response = await llm.SendAsync(input, systemPrompt: systemPrompt);
+                response = TextUtilities.TrimTrailingNewlines(response);
                 if (string.IsNullOrWhiteSpace(response))
                 {
                     await ShowMessageAsync("(empty response)");
@@ -222,7 +229,7 @@ public partial class App : global::Avalonia.Application
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
             var dlg = new ResponseDialog { ResponseText = "Testing backend…" };
-            _ = dlg.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
+            _ = dlg.ShowDialog(GetOwnerWindow());
             try
             {
                 using var llm = new LlmService();
@@ -241,7 +248,7 @@ public partial class App : global::Avalonia.Application
         Dispatcher.UIThread.Post(async () =>
         {
             var wnd = new SettingsWindow();
-            await wnd.ShowDialog((ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow);
+            await wnd.ShowDialog(GetOwnerWindow());
         });
     }
 
@@ -276,9 +283,46 @@ public partial class App : global::Avalonia.Application
 
     private string ComposeSystemPrompt(string? extra = null) => SystemPromptBuilder.Build(_store.Current.Language ?? "English", extra);
 
+    private static bool IsTranslateShortcut(PromptShortcutConfiguration shortcut)
+    {
+        if (!string.IsNullOrWhiteSpace(shortcut.Name) && shortcut.Name.Contains("Translate", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(shortcut.Prompt) && shortcut.Prompt.Contains("translate", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private Window GetOwnerWindow()
+    {
+        var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+        if (owner is not null)
+        {
+            return owner;
+        }
+        if (_hiddenWindow is not null)
+        {
+            return _hiddenWindow;
+        }
+        var hidden = new Window
+        {
+            Width = 1,
+            Height = 1,
+            ShowInTaskbar = false,
+            SystemDecorations = SystemDecorations.None,
+            Opacity = 0,
+            WindowState = WindowState.Minimized
+        };
+        _hiddenWindow = hidden;
+        return hidden;
+    }
+
     private async System.Threading.Tasks.Task ShowMessageAsync(string message)
     {
-        var owner = (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)!.MainWindow;
+        var owner = GetOwnerWindow();
         var dlg = new ResponseDialog { ResponseText = message };
         await dlg.ShowDialog(owner);
     }

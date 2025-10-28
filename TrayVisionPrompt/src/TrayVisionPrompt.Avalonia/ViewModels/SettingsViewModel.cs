@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -38,7 +38,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         set
         {
             _selectedPrompt = value;
-            _removePromptCommand?.RaiseCanExecuteChanged();
+            _removePromptCommand.RaiseCanExecuteChanged();
             OnPropertyChanged();
         }
     }
@@ -50,7 +50,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     public ICommand AddPromptCommand { get; }
     public ICommand RemovePromptCommand => _removePromptCommand;
 
-    private readonly RelayCommand? _removePromptCommand;
+    private readonly RelayCommand _removePromptCommand;
 
     public SettingsViewModel()
     {
