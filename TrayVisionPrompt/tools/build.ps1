@@ -4,7 +4,7 @@ param(
 
 $configuration = if ($Release) { "Release" } else { "Debug" }
 
-Write-Host "Building TrayVisionPrompt ($configuration)" -ForegroundColor Cyan
+Write-Host "Building deskLLM ($configuration)" -ForegroundColor Cyan
 
 dotnet restore ..\TrayVisionPrompt.sln
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -19,4 +19,8 @@ if ($Release) {
     Write-Host "Publishing Avalonia single-file to $outDir" -ForegroundColor Cyan
     dotnet publish ..\src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $outDir
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (Test-Path "$outDir\TrayVisionPrompt.Avalonia.exe") {
+        Move-Item -Force "$outDir\TrayVisionPrompt.Avalonia.exe" "$outDir\deskLLM.exe"
+    }
 }
+

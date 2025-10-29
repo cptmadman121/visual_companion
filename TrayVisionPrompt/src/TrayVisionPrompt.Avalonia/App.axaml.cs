@@ -111,13 +111,19 @@ public partial class App : global::Avalonia.Application
                     }
                     var prompt = string.IsNullOrWhiteSpace(ocr) ? ask.Instruction : $"{ask.Instruction}\n\nOCR-Fallback:\n{ocr}";
                     using var llm = new LlmService();
-                    var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: ComposeSystemPrompt());
+                    _tray?.StartBusy();
+                    var sys = SystemPromptBuilder.BuildForInstruction(ask.Instruction, null, _store.Current.Language);
+                    var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: sys);
                     text = TextUtilities.TrimTrailingNewlines(text);
                     resp.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
                 }
                 catch (Exception ex)
                 {
                     resp.ResponseText = $"Error: {ex.Message}";
+                }
+                finally
+                {
+                    _tray?.StopBusy();
                 }
             }
         });
@@ -159,12 +165,13 @@ public partial class App : global::Avalonia.Application
                         ? PromptShortcutConfiguration.DefaultTranslatePrompt
                         : PromptShortcutConfiguration.DefaultProofreadPrompt)
                     : shortcut.Prompt;
-                var systemPrompt = ComposeSystemPrompt(extra);
+                var systemPrompt = SystemPromptBuilder.BuildForSelection(capture.Text, extra, _store.Current.Language);
                 var userContent = capture.Text!;
                 if (IsTranslateShortcut(shortcut))
                 {
                     userContent = "Translate the following text exactly as instructed above. Return only the translated text.\n\nText:\n" + capture.Text!;
                 }
+                _tray?.StartBusy();
                 var response = await llm.SendAsync(userContent, systemPrompt: systemPrompt);
                 response = TextUtilities.TrimTrailingNewlines(response);
                 if (IsTranslateShortcut(shortcut))
@@ -191,6 +198,10 @@ public partial class App : global::Avalonia.Application
             {
                 await ShowMessageAsync($"Error: {ex.Message}");
             }
+            finally
+            {
+                _tray?.StopBusy();
+            }
         });
     }
 
@@ -213,7 +224,8 @@ public partial class App : global::Avalonia.Application
             try
             {
                 using var llm = new LlmService();
-                var systemPrompt = ComposeSystemPrompt(string.IsNullOrWhiteSpace(shortcut.Prompt) ? null : shortcut.Prompt);
+                var systemPrompt = SystemPromptBuilder.BuildForSelection(input, string.IsNullOrWhiteSpace(shortcut.Prompt) ? null : shortcut.Prompt, _store.Current.Language);
+                _tray?.StartBusy();
                 var response = await llm.SendAsync(input, systemPrompt: systemPrompt);
                 response = TextUtilities.TrimTrailingNewlines(response);
                 if (string.IsNullOrWhiteSpace(response))
@@ -230,6 +242,10 @@ public partial class App : global::Avalonia.Application
             {
                 await ShowMessageAsync($"Error: {ex.Message}");
             }
+            finally
+            {
+                _tray?.StopBusy();
+            }
         });
     }
 
@@ -242,12 +258,17 @@ public partial class App : global::Avalonia.Application
             try
             {
                 using var llm = new LlmService();
+                _tray?.StartBusy();
                 var text = await llm.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.", systemPrompt: ComposeSystemPrompt());
                 dlg.ResponseText = string.IsNullOrWhiteSpace(text) ? "(no response)" : text;
             }
             catch (Exception ex)
             {
                 dlg.ResponseText = $"Error: {ex.Message}";
+            }
+            finally
+            {
+                _tray?.StopBusy();
             }
         });
     }

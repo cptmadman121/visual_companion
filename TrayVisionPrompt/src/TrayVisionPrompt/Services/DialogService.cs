@@ -49,7 +49,7 @@ public class DialogService
 
     public void ShowError(string message)
     {
-        System.Windows.MessageBox.Show(message, "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
+        System.Windows.MessageBox.Show(message, "deskLLM", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     public void ShowSettingsDialog()
@@ -59,3 +59,4 @@ public class DialogService
         dialog.ShowDialog();
     }
 }
+

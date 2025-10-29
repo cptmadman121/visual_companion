@@ -73,7 +73,7 @@ public partial class ShellViewModel : ObservableObject
             {
                 _logger.LogWarning("Unable to register hotkey {Hotkey}.", localShortcut.Hotkey);
                 System.Windows.MessageBox.Show($"Der Hotkey {localShortcut.Hotkey} konnte nicht registriert werden.",
-                    "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    "deskLLM", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -96,7 +96,7 @@ public partial class ShellViewModel : ObservableObject
         {
             _logger.LogError(ex, "Prompt execution failed");
             System.Windows.MessageBox.Show($"Die Ausführung des Hotkeys ist fehlgeschlagen: {ex.Message}",
-                "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
+                "deskLLM", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -110,7 +110,7 @@ public partial class ShellViewModel : ObservableObject
         {
             _logger.LogError(ex, "Backend test failed");
             System.Windows.MessageBox.Show($"Backend-Test fehlgeschlagen: {ex.Message}",
-                "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
+                "deskLLM", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -133,3 +133,4 @@ public partial class ShellViewModel : ObservableObject
     }
 
 }
+

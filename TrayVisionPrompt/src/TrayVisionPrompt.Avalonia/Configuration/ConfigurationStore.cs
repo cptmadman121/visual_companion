@@ -15,9 +15,19 @@ public class ConfigurationStore
     static ConfigurationStore()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appFolder = Path.Combine(appData, "TrayVisionPrompt");
+        var appFolder = Path.Combine(appData, "deskLLM");
         Directory.CreateDirectory(appFolder);
         ConfigPath = Path.Combine(appFolder, "config.json");
+        try
+        {
+            var oldFolder = Path.Combine(appData, "TrayVisionPrompt");
+            var oldConfig = Path.Combine(oldFolder, "config.json");
+            if (!File.Exists(ConfigPath) && File.Exists(oldConfig))
+            {
+                File.Copy(oldConfig, ConfigPath, overwrite: false);
+            }
+        }
+        catch { /* ignore migration issues */ }
     }
 
     public ConfigurationStore()

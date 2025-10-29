@@ -16,6 +16,7 @@ public class TextWorkflow
     private readonly DialogService _dialogService;
     private readonly ResponseCache _responseCache;
     private readonly ILogger<TextWorkflow> _logger;
+    private readonly TrayIconService _trayIconService;
 
     public TextWorkflow(
         ForegroundTextService textService,
@@ -23,7 +24,8 @@ public class TextWorkflow
         ConfigurationManager configurationManager,
         DialogService dialogService,
         ResponseCache responseCache,
-        ILogger<TextWorkflow> logger)
+        ILogger<TextWorkflow> logger,
+        TrayIconService trayIconService)
     {
         _textService = textService;
         _ollmClientFactory = ollmClientFactory;
@@ -31,6 +33,7 @@ public class TextWorkflow
         _dialogService = dialogService;
         _responseCache = responseCache;
         _logger = logger;
+        _trayIconService = trayIconService;
     }
 
     public async Task ExecuteAsync(PromptShortcutConfiguration shortcut)
@@ -56,7 +59,7 @@ public class TextWorkflow
         {
             System.Windows.MessageBox.Show(
                 "Keine Textauswahl gefunden. Bitte markieren Sie Text oder kopieren Sie Inhalt in die Zwischenablage.",
-                "TrayVisionPrompt",
+                "deskLLM",
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Information);
             return;
@@ -79,7 +82,7 @@ public class TextWorkflow
                 await _textService.SetClipboardTextAsync(response);
                 System.Windows.MessageBox.Show(
                     "Antwort in Zwischenablage kopiert.",
-                    "TrayVisionPrompt",
+                    "deskLLM",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Information);
             }
@@ -127,6 +130,23 @@ public class TextWorkflow
         using var client = _ollmClientFactory.Create(configuration);
 
         var promptBuilder = new StringBuilder();
+        // Language hint: respond in same language as selection, unless this is an explicit translate prompt
+        var isTranslate = (!string.IsNullOrWhiteSpace(shortcut.Name) && shortcut.Name.Contains("translate", StringComparison.OrdinalIgnoreCase))
+                          || (!string.IsNullOrWhiteSpace(shortcut.Prompt) && shortcut.Prompt.Contains("translate", StringComparison.OrdinalIgnoreCase));
+        if (!isTranslate)
+        {
+            var lang = LanguageDetector.Detect(text);
+            if (string.Equals(lang, "German", StringComparison.OrdinalIgnoreCase))
+            {
+                promptBuilder.AppendLine("Bitte antworte ausschließlich auf Deutsch, sofern nicht anders angewiesen.");
+                promptBuilder.AppendLine();
+            }
+            else if (string.Equals(lang, "English", StringComparison.OrdinalIgnoreCase))
+            {
+                promptBuilder.AppendLine("Please respond exclusively in English unless instructed otherwise.");
+                promptBuilder.AppendLine();
+            }
+        }
         if (!string.IsNullOrWhiteSpace(shortcut.Prompt))
         {
             promptBuilder.AppendLine(shortcut.Prompt.Trim());
@@ -146,6 +166,7 @@ public class TextWorkflow
             }
         };
 
+        _trayIconService.StartBusy();
         try
         {
             var response = await client.GetResponseAsync(request);
@@ -158,5 +179,10 @@ public class TextWorkflow
             _dialogService.ShowError(ex.Message);
             return null;
         }
+        finally
+        {
+            _trayIconService.StopBusy();
+        }
     }
 }
+

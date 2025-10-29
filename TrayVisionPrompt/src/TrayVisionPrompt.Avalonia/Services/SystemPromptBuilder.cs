@@ -17,4 +17,16 @@ public static class SystemPromptBuilder
 
         return $"{basePrompt}\n\n{extra}";
     }
+
+    public static string BuildForSelection(string? selectionText, string? extra, string? fallbackLanguage)
+    {
+        var detected = LanguageDetector.Detect(selectionText) ?? (fallbackLanguage ?? "English");
+        return Build(detected, extra);
+    }
+
+    public static string BuildForInstruction(string? instructionText, string? extra, string? fallbackLanguage)
+    {
+        var detected = LanguageDetector.Detect(instructionText) ?? (fallbackLanguage ?? "English");
+        return Build(detected, extra);
+    }
 }

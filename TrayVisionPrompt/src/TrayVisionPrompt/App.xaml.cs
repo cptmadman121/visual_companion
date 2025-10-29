@@ -17,7 +17,7 @@ public partial class App : System.Windows.Application
         {
             _serviceLocator = new ServiceLocator();
             _serviceLocator.Initialize();
-            _serviceLocator.Logger.LogInformation("TrayVisionPrompt starting up");
+            _serviceLocator.Logger.LogInformation("deskLLM starting up");
 
             var shell = _serviceLocator.Resolve<Views.ShellWindow>();
             MainWindow = shell;
@@ -26,8 +26,8 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show($"TrayVisionPrompt konnte nicht gestartet werden: {ex.Message}",
-                "TrayVisionPrompt", MessageBoxButton.OK, MessageBoxImage.Error);
+            System.Windows.MessageBox.Show($"deskLLM konnte nicht gestartet werden: {ex.Message}",
+                "deskLLM", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(-1);
         }
     }
@@ -36,10 +36,11 @@ public partial class App : System.Windows.Application
     {
         if (_serviceLocator != null)
         {
-            _serviceLocator.Logger.LogInformation("TrayVisionPrompt shutting down");
+            _serviceLocator.Logger.LogInformation("deskLLM shutting down");
             _serviceLocator.Dispose();
         }
 
         base.OnExit(e);
     }
 }
+

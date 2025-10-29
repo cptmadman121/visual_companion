@@ -24,7 +24,7 @@ public sealed class ForegroundTextService
         {
             try
             {
-                Clipboard.SetText(text);
+                Clipboard.SetText(NormalizeNewlinesToWindows(text));
             }
             catch
             {
@@ -128,7 +128,7 @@ public sealed class ForegroundTextService
 
         try
         {
-            Clipboard.SetText(replacement);
+            Clipboard.SetText(NormalizeNewlinesToWindows(replacement));
         }
         catch
         {
@@ -139,13 +139,21 @@ public sealed class ForegroundTextService
         // Try direct paste first; fall back to Ctrl+V
         SendPaste(windowHandle);
 
-        // Give the target application time to process the keyboard paste
-        // before restoring the original clipboard contents. Without this,
-        // the Ctrl+V handler may read the restored (possibly empty) clipboard
-        // resulting in the selection being replaced by nothing.
-        Thread.Sleep(200);
+        // Give the target application ample time to process the keyboard paste
+        // before restoring the original clipboard contents. Some editors
+        // (e.g., Notepad++) process Ctrl+V asynchronously and can read from the
+        // clipboard after a noticeable delay. Too short a delay can lead to an
+        // empty replacement. Increase to improve reliability.
+        Thread.Sleep(800);
 
         RestoreClipboard(originalData);
+    }
+
+    private static string NormalizeNewlinesToWindows(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var t = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        return t.Replace("\n", "\r\n");
     }
 
     private static async Task<T> RunStaAsync<T>(Func<T> action)

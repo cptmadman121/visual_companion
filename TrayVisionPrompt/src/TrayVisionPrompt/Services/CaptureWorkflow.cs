@@ -10,6 +10,7 @@ namespace TrayVisionPrompt.Services;
 public class CaptureWorkflow
 {
     private readonly DialogService _dialogService;
+    private readonly TrayIconService _trayIconService;
     private readonly IOllmClientFactory _ollmClientFactory;
     private readonly OcrService _ocrService;
     private readonly ConfigurationManager _configurationManager;
@@ -18,6 +19,7 @@ public class CaptureWorkflow
 
     public CaptureWorkflow(
         DialogService dialogService,
+        TrayIconService trayIconService,
         IOllmClientFactory ollmClientFactory,
         OcrService ocrService,
         ConfigurationManager configurationManager,
@@ -25,6 +27,7 @@ public class CaptureWorkflow
         ILogger<CaptureWorkflow> logger)
     {
         _dialogService = dialogService;
+        _trayIconService = trayIconService;
         _ollmClientFactory = ollmClientFactory;
         _ocrService = ocrService;
         _configurationManager = configurationManager;
@@ -66,8 +69,16 @@ public class CaptureWorkflow
             UseVision = false
         };
 
-        var response = await client.GetResponseAsync(request);
-        _dialogService.ShowResponseDialog(response, allowClipboardReplacement: false);
+        _trayIconService.StartBusy();
+        try
+        {
+            var response = await client.GetResponseAsync(request);
+            _dialogService.ShowResponseDialog(response, allowClipboardReplacement: false);
+        }
+        finally
+        {
+            _trayIconService.StopBusy();
+        }
     }
 
     private async Task PrepareAndSendAsync(CaptureResult captureResult, InstructionContext instruction)
@@ -80,9 +91,20 @@ public class CaptureWorkflow
             captureResult = await EnrichWithOcrAsync(captureResult);
         }
 
+        var promptText = instruction.Prompt ?? string.Empty;
+        var lang = LanguageDetector.Detect(promptText);
+        if (string.Equals(lang, "German", StringComparison.OrdinalIgnoreCase))
+        {
+            promptText = "Bitte antworte ausschließlich auf Deutsch, sofern nicht anders angewiesen.\n\n" + promptText;
+        }
+        else if (string.Equals(lang, "English", StringComparison.OrdinalIgnoreCase))
+        {
+            promptText = "Please respond exclusively in English unless instructed otherwise.\n\n" + promptText;
+        }
+
         var request = new LlmRequest
         {
-            Prompt = instruction.Prompt,
+            Prompt = promptText,
             ImageBase64 = captureResult.ImageBase64,
             TimestampUtc = DateTime.UtcNow,
             DisplayScaling = captureResult.DisplayScaling,
@@ -106,6 +128,7 @@ public class CaptureWorkflow
 
         _logger.LogInformation("Sending request to backend {Endpoint} with model {Model}", configuration.Endpoint, configuration.Model);
 
+        _trayIconService.StartBusy();
         try
         {
             var response = await client.GetResponseAsync(request);
@@ -116,6 +139,10 @@ public class CaptureWorkflow
         {
             _logger.LogError(ex, "Error while communicating with backend");
             _dialogService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _trayIconService.StopBusy();
         }
     }
     private async Task<CaptureResult> EnrichWithOcrAsync(CaptureResult capture)
