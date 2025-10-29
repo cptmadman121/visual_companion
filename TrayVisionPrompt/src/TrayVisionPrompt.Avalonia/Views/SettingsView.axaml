@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="TrayVisionPrompt.Avalonia.Views.SettingsView">
+             x:Class="TrayVisionPrompt.Avalonia.Views.SettingsView"
+             x:CompileBindings="False">
   <Grid RowDefinitions="Auto,*,Auto">
     <TextBlock Grid.Row="0" Classes="h1" Text="Settings" Margin="8"/>
     <TabControl Grid.Row="1" Margin="8">
@@ -12,11 +13,7 @@
             <TextBlock Classes="caption" Text="Icon"/>
             <ComboBox ItemsSource="{Binding AvailableIcons}" SelectedItem="{Binding SelectedIcon, Mode=TwoWay}"/>
             <TextBlock Classes="caption" Text="Backend"/>
-            <ComboBox SelectedItem="{Binding Backend, Mode=TwoWay}">
-              <ComboBoxItem>ollama</ComboBoxItem>
-              <ComboBoxItem>vllm</ComboBoxItem>
-              <ComboBoxItem>llamacpp</ComboBoxItem>
-            </ComboBox>
+            <ComboBox ItemsSource="{Binding Backends}" SelectedItem="{Binding Backend, Mode=TwoWay}"/>
             <TextBlock Classes="caption" Text="Endpoint"/>
             <TextBox Text="{Binding Endpoint, Mode=TwoWay}"/>
             <TextBlock Classes="caption" Text="Model"/>

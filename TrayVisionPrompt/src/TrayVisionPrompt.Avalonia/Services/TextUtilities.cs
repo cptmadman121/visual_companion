@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
@@ -87,6 +88,55 @@ public static class TextUtilities
         var result = cleaned.Count == 1 ? cleaned[0] : cleaned[^1];
         result = result.Trim();
         // Collapse any internal newlines or multiple spaces just in case
+        result = result.Replace('\n', ' ');
+        while (result.Contains("  ")) result = result.Replace("  ", " ");
+        return result.Trim();
+    }
+
+    // Stricter variant that additionally removes common meta-confirmations
+    public static string SanitizeTranslationStrict(string? response, string? original)
+    {
+        if (string.IsNullOrWhiteSpace(response)) return string.Empty;
+        var text = response.Replace("\r\n", "\n").Replace('\r', '\n');
+        if (text.StartsWith("```"))
+        {
+            var idx = text.IndexOf('\n');
+            if (idx >= 0) text = text[(idx + 1)..];
+            if (text.EndsWith("```"))
+            {
+                var lastIdx = text.LastIndexOf("```", StringComparison.Ordinal);
+                if (lastIdx >= 0) text = text[..lastIdx];
+            }
+        }
+
+        var parts = text.Split('\n')
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Select(s => TrimPrefix(TrimPrefix(TrimPrefix(TrimPrefix(TrimPrefix(s,
+                "German:"), "Deutsch:"), "Translation:"), "Übersetzung:"), "German translation:"))
+            .ToList();
+
+        // Remove generic confirmations/meta
+        parts = parts.Where(s =>
+        {
+            var r = s.ToLowerInvariant();
+            if (r.Contains("this confirms i understand")) return false;
+            if (r.Contains("await your text")) return false;
+            if (r.Contains("i will now await")) return false;
+            if (r.Contains("i will now translate")) return false;
+            if (r.Contains("as requested") && r.Contains("performed")) return false;
+            return true;
+        }).ToList();
+
+        if (parts.Count > 0 && !string.IsNullOrWhiteSpace(original))
+        {
+            if (NormalizeForCompare(parts[0]) == NormalizeForCompare(original!))
+            {
+                parts.RemoveAt(0);
+            }
+        }
+        if (parts.Count == 0) return string.Empty;
+        var result = parts.Count == 1 ? parts[0] : parts[^1];
         result = result.Replace('\n', ' ');
         while (result.Contains("  ")) result = result.Replace("  ", " ");
         return result.Trim();

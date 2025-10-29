@@ -31,11 +31,25 @@ TrayVisionPrompt/
 - Windows 10/11 x64
 
 ### Build & Test
+```bat
+:: Aus dem Projektstamm
+
+:: Release: erstellt ein Avalonia Single-File (self-contained) direkt unter .\dist
+tools\build.cmd
+
+:: Debug Build (ohne Publish)
+tools\build.cmd -Debug
+
+:: Tests
+dotnet test TrayVisionPrompt.sln
+```
+
+Falls Ihre PowerShell-Richtlinie signierte Skripte erzwingt, verwenden Sie die `.cmd`-Skripte (`tools\build.cmd`, `tools\package.cmd`) oder führen Sie die `dotnet`-Befehle direkt aus:
+
 ```powershell
-# Aus dem Projektstamm
-pwsh tools/build.ps1
-pwsh tools/build.ps1 -Release
-pwsh -c "dotnet test TrayVisionPrompt.sln"
+dotnet restore .\TrayVisionPrompt.sln
+dotnet build .\TrayVisionPrompt.sln -c Release
+dotnet publish .\src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\dist
 ```
 
 ### Visual Studio Code

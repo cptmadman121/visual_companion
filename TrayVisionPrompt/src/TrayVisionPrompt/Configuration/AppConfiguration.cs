@@ -29,16 +29,16 @@ public class AppConfiguration
     public string Backend { get; set; } = "ollama";
 
     [JsonPropertyName("endpoint")]
-    public string Endpoint { get; set; } = "http://192.168.201.166:11434/v1/chat/completions";
+    public string Endpoint { get; set; } = "https://ollama.test.cipsoft.de/";
 
     [JsonPropertyName("model")]
-    public string Model { get; set; } = "llava:latest";
+    public string Model { get; set; } = "gemma3:27b";
 
     [JsonPropertyName("requestTimeoutMs")]
     public int RequestTimeoutMs { get; set; } = 45000;
 
     [JsonPropertyName("maxTokens")]
-    public int MaxTokens { get; set; } = 1024;
+    public int MaxTokens { get; set; } = 32000;
 
     [JsonPropertyName("temperature")]
     public double Temperature { get; set; } = 0.2;
@@ -63,10 +63,10 @@ public class AppConfiguration
     public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";
 
     [JsonPropertyName("proofreadPrompt")]
-    public string ProofreadPrompt { get; set; } = "Proofread and improve grammar, spelling, and clarity. Preserve tone and meaning. Return only the corrected text. Keep formatting, newlines, tabs etc. exactly as in the original text.";
+    public string ProofreadPrompt { get; set; } = "Proofread and improve grammar, spelling, and clarity, while maintaining the original language of the text. Preserve tone and meaning. Keep formatting, newlines, tabs etc. exactly as in the original text. Return only the corrected text.";
 
     [JsonPropertyName("translatePrompt")]
-    public string TranslatePrompt { get; set; } = "If the text is english, translate it to German. If the text is German, translate it to English. All while preserving meaning, tone, and formatting. Return only the translation.";
+    public string TranslatePrompt { get; set; } = "If the provided text is not in German, translate it into German. If the provided text is in German, translate it into English. The entire translation process should preserve the tone, structure, and formatting of the original text. Return only the translated text.";
 
     public void EnsureDefaults()
     {

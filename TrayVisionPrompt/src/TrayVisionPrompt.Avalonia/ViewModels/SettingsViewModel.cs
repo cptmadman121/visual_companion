@@ -16,16 +16,17 @@ public class SettingsViewModel : INotifyPropertyChanged
     private readonly ConfigurationStore _store = new();
 
     public string Backend { get; set; } = "ollama";
-    public string Endpoint { get; set; } = "http://localhost:11434";
-    public string Model { get; set; } = "llama3";
+    public string Endpoint { get; set; } = "https://ollama.test.cipsoft.de/";
+    public string Model { get; set; } = "gemma3:27b";
     public int TimeoutMs { get; set; } = 60000;
-    public int MaxTokens { get; set; } = 4096;
+    public int MaxTokens { get; set; } = 32000;
     public double Temperature { get; set; } = 0.7;
     public bool UseVision { get; set; }
     public bool UseOcrFallback { get; set; }
     public string? Proxy { get; set; }
     public string Language { get; set; } = "English";
     public IReadOnlyList<string> Languages { get; } = new[] { "English", "German" };
+    public IReadOnlyList<string> Backends { get; } = new[] { "ollama", "vllm", "llamacpp" };
     public IReadOnlyList<PromptActivationMode> ActivationModes { get; } = Enum.GetValues<PromptActivationMode>();
     public IReadOnlyList<IconOption> AvailableIcons { get; }
     public IconOption? SelectedIcon { get; set; }
@@ -38,7 +39,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         set
         {
             _selectedPrompt = value;
-            _removePromptCommand.RaiseCanExecuteChanged();
+            _removePromptCommand?.RaiseCanExecuteChanged();
             OnPropertyChanged();
         }
     }
