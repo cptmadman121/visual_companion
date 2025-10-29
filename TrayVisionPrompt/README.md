@@ -1,102 +1,110 @@
-# TrayVisionPrompt
+# deskLLM
 
-TrayVisionPrompt ist ein leichtgewichtiges Windows 10/11 Tray-Companion, das markierte Bildschirmbereiche per globalem Hotkey erfasst, Annotationen erlaubt und den Screenshot zusammen mit einem Prompt an einen lokalen LLM-Server sendet. Die Antwort wird als Pop-Up angezeigt und kann in die Zwischenablage kopiert werden.
+deskLLM is a lightweight Windows tray companion that lets you capture a screen region with annotations or operate on the current text selection, send it to a local LLM backend (OpenAI-compatible), and view or apply the response.
 
-## Features
-- 🖥️ System-Tray-App mit Kontextmenü (Einstellungen, Backend testen, letzte Antwort kopieren, Logs öffnen, Beenden)
-- ⌨️ Konfigurierbarer globaler Hotkey (Standard: `Win+Shift+Q`)
-- ✏️ Bildschirmüberlagerung zur Rechteckauswahl mit Ink-Annotationen (Undo/Reset)
-- 📝 Instruktionsdialog mit Prompt-Eingabe und Presets
-- 🤖 Adapterbasiertes LLM-Interface (Ollama, vLLM, llama.cpp)
-- 🧾 Optionale OCR-Fallback-Verarbeitung über Windows.Media.Ocr
-- 🔒 Lokale Verarbeitung, Logging nach `%APPDATA%\TrayVisionPrompt`
+It targets quick day-to-day workflows like proofreading and translating selected text in editors such as Notepad++, and visual questions on screenshots with LLMs that support vision.
 
-## Projektstruktur
-```
-TrayVisionPrompt/
-├── TrayVisionPrompt.sln
-├── src/
-│   └── TrayVisionPrompt/        # WPF-Anwendung (.NET 8)
-├── tests/
-│   └── TrayVisionPrompt.Tests/  # xUnit-Tests
-├── tools/                       # Build- und Paket-Skripte
-├── Installer.md                 # Installationshinweise
-└── README.md
-```
+**Highlights**
+- System tray app with a context menu: prompts, Settings, Test Backend, Copy Last Response, Open Logs, Exit.
+- Global hotkeys for each prompt; per-prompt activation: Capture Screen, Foreground Selection, or Text Dialog.
+- Annotation overlay for screen capture (select area, draw/undo, reset, confirm/cancel).
+- OpenAI-compatible clients: Ollama, vLLM, llama.cpp; optional OCR fallback when vision is disabled.
+- Configuration and logs stored under `%APPDATA%\deskLLM`.
 
-## Entwicklung
-### Voraussetzungen
-- Visual Studio 2022 (17.8+) mit .NET Desktop Development
-- .NET 8 SDK
+**What’s New**
+- Custom prompt shortcuts: create your own hotkey + prompt pairs in Settings.
+- Smooth Notepad++ flow: select text, press a hotkey, get a response, and replace the selection.
+
+**Repository Layout**
+- `TrayVisionPrompt.sln`
+- `src/TrayVisionPrompt` (WPF core, workflows, services)
+- `src/TrayVisionPrompt.Avalonia` (packaged UI host for single-file distribution)
+- `tests/TrayVisionPrompt.Tests` (xUnit)
+- `tools/` (build/package scripts)
+- `Installer.md`, `README.md`
+
+**Requirements**
 - Windows 10/11 x64
+- .NET 8 SDK (for building) or .NET Desktop Runtime 8 (for running)
+- Local LLM server compatible with OpenAI Chat Completions API
 
-### Build & Test
-```bat
-:: Aus dem Projektstamm
+**Build and Test**
+- Release build + publish to `dist`: `tools\build.cmd`
+- Debug build only: `tools\build.cmd -Debug`
+- Run tests: `dotnet test TrayVisionPrompt.sln`
 
-:: Release: erstellt ein Avalonia Single-File (self-contained) direkt unter .\dist
-tools\build.cmd
+PowerShell execution policy locked down? Use the `.cmd` scripts or the raw `dotnet` commands:
+- `dotnet restore TrayVisionPrompt.sln`
+- `dotnet build TrayVisionPrompt.sln -c Release`
+- `dotnet publish src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist`
 
-:: Debug Build (ohne Publish)
-tools\build.cmd -Debug
+**Install**
+- See `Installer.md` for packaging, distribution, and update notes.
 
-:: Tests
-dotnet test TrayVisionPrompt.sln
+**Configuration**
+- First run creates `%APPDATA%\deskLLM\config.json`.
+- Key options: backend (`ollama`, `vllm`, `llamacpp`), `endpoint`, `model`, timeouts, `useVision`, `useOcrFallback`, and `promptShortcuts`.
+- Example (abbreviated):
 ```
-
-Falls Ihre PowerShell-Richtlinie signierte Skripte erzwingt, verwenden Sie die `.cmd`-Skripte (`tools\build.cmd`, `tools\package.cmd`) oder führen Sie die `dotnet`-Befehle direkt aus:
-
-```powershell
-dotnet restore .\TrayVisionPrompt.sln
-dotnet build .\TrayVisionPrompt.sln -c Release
-dotnet publish .\src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\dist
-```
-
-### Visual Studio Code
-Die Datei `.vscode/tasks.json` definiert Build- und Test-Tasks, `.vscode/launch.json` startet die App nach einem Debug-Build.
-
-## Konfiguration
-Beim ersten Start wird `%APPDATA%\TrayVisionPrompt\config.json` erzeugt. Beispiel:
-```json
 {
-  "hotkey": "Win+Shift+Q",
   "backend": "ollama",
-  "endpoint": "http://192.168.201.166:11434/v1/chat/completions",
+  "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
   "model": "llava:latest",
-  "requestTimeoutMs": 45000,
-  "maxTokens": 1024,
-  "temperature": 0.2,
   "useVision": true,
   "useOcrFallback": true,
-  "proxy": null,
-  "telemetry": false,
-  "logLevel": "Info"
+  "promptShortcuts": [
+    { "id": "...", "name": "Capture Screen", "hotkey": "Ctrl+Shift+S", "prompt": "Describe the selected region succinctly.", "activation": "CaptureScreen" },
+    { "id": "...", "name": "Proofread Selection", "hotkey": "Ctrl+Shift+P", "prompt": "Proofread and improve grammar...", "activation": "ForegroundSelection" },
+    { "id": "...", "name": "Translate Selection", "hotkey": "Ctrl+Shift+T", "prompt": "If the text is not German...", "activation": "ForegroundSelection" }
+  ]
 }
 ```
 
-## Backend-Anbindung
-TrayVisionPrompt kommuniziert über eine OpenAI-kompatible `/chat/completions`-Route. Bilder werden als `data:image/png;base64` in `content.parts` übergeben. Die Implementierungen sind austauschbar:
-- **OllamaClient** – Standard für Ollama Vision-Modelle (`llava`, `llava:latest`)
-- **VllmClient** – Für vLLM-Instanzen mit Vision-Support
-- **LlamaCppClient** – Für `llama.cpp server.exe`
+**Usage in Notepad++**
+- Select text in Notepad++ (or most editors/apps that support Ctrl+C/Ctrl+V).
+- Press the configured hotkey, e.g. `Ctrl+Shift+P` for “Proofread Selection”.
+- The app captures the selection from the foreground window and sends it with your prompt.
+- The response dialog appears; the selection is replaced automatically when possible. If replacement isn’t possible, the result is copied to the clipboard.
 
-Falls Vision deaktiviert ist, aber `useOcrFallback = true`, wird der OCR-Text als Ergänzung gesendet.
+Tips
+- Works best when a selection exists; if none is available, the original clipboard text may be used.
+- The service avoids resizing Notepad++ when bringing it to foreground.
 
-## Logging & Datenschutz
-- Serilog schreibt nach `%APPDATA%\TrayVisionPrompt\TrayVisionPrompt.log` (Rolling, 7 Tage)
-- Keine Telemetrie oder externe Uploads; alle Requests laufen lokal
-- Logs können über das Tray-Menü geöffnet werden
+**Image Capture and Annotation**
+- Trigger a “Capture Screen” prompt via tray menu or hotkey (e.g. `Ctrl+Shift+S`).
+- An overlay appears:
+  - Select a rectangle to capture a region, or leave empty to capture the full virtual screen.
+  - Switch to draw mode to annotate; undo by clearing strokes (Reset).
+  - Confirm to open the instruction dialog with a live preview; choose or edit the prompt.
+- If `useVision` is false but `useOcrFallback` is true, extracted OCR text is sent instead of the image.
 
-## Tests
-```powershell
-pwsh -c "dotnet test TrayVisionPrompt.sln"
-```
+**Add New Hotkey + Prompt Pairs**
+- Via Settings (tray icon → Settings):
+  - Add a new prompt, set a descriptive name, a global hotkey (e.g., `Ctrl+Alt+R`), an activation mode, and the prompt text.
+  - Activation modes:
+    - `CaptureScreen` – shows the overlay, captures an image, and sends it.
+    - `ForegroundSelection` – captures the current selection from the active window and replaces it with the response.
+    - `TextDialog` – pops up a text input dialog; response is shown and copied.
+  - Save to persist and auto-register hotkeys.
+- Or edit `%APPDATA%\deskLLM\config.json` directly under `promptShortcuts`.
 
-## Installer
-Siehe [Installer.md](Installer.md) für Paketierung, Installation und Update-Hinweise.
+**Backend Support**
+- Uses an OpenAI-compatible Chat Completions endpoint; image content is sent as base64 when vision is enabled.
+- Clients: `OllamaClient`, `VllmClient`, `LlamaCppClient`.
+- Test your setup from the tray menu: “Test Backend”.
 
-## Roadmap / Erweiterungen
-- Zusätzliche Backend-Adapter (REST, gRPC)
-- Fortgeschrittene Annotationstools (Text, Pfeile, Formen)
-- Automatische Erkennung mehrerer Monitore
-- Erweiterte Markdown-Anzeige der LLM-Antwort
+**Logging and Privacy**
+- Logs: `%APPDATA%\deskLLM\TrayVisionPrompt.log` (rolling).
+- No telemetry; requests go only to your configured endpoint.
+- Open the logs folder from the tray menu.
+
+**Troubleshooting**
+- If a hotkey fails to register, you’ll see a warning; adjust the hotkey to avoid conflicts.
+- Some apps restrict clipboard access; in that case, the app falls back to using the clipboard directly.
+
+**License**
+- Internal/for local use. No telemetry. See repository policies if present.
+
+
+
+

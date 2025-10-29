@@ -18,12 +18,7 @@ public static class TextUtilities
         while (len > 0)
         {
             var ch = s[len - 1];
-            if (ch == '\n')
-            {
-                len -= 1;
-                continue;
-            }
-            if (ch == '\r')
+            if (ch == '\n' || ch == '\r')
             {
                 len -= 1;
                 continue;
@@ -33,17 +28,14 @@ public static class TextUtilities
         return len == s.Length ? s : s.Substring(0, len);
     }
 
-    // For translation prompts: strip code fences, headers, and keep only the likely translated line.
-    // Also collapses internal newlines to a single space to avoid multi-line pastes.
+    // Preserve multi-line formatting while stripping simple labels and code fences
     public static string SanitizeTranslationResponse(string? response, string? original)
     {
         var text = response ?? string.Empty;
         if (string.IsNullOrWhiteSpace(text)) return string.Empty;
 
-        // Normalize newlines
         text = text.Replace("\r\n", "\n").Replace('\r', '\n');
 
-        // Strip fenced code blocks if present
         if (text.StartsWith("```"))
         {
             var idx = text.IndexOf('\n');
@@ -55,45 +47,42 @@ public static class TextUtilities
             }
         }
 
-        // Split and trim lines
-        var lines = text.Split('\n');
-        var cleaned = new System.Collections.Generic.List<string>(lines.Length);
-        foreach (var line in lines)
+        var rawLines = text.Split('\n');
+        var cleaned = new System.Collections.Generic.List<string>(rawLines.Length);
+        foreach (var line in rawLines)
         {
-            var l = line.Trim();
-            if (l.Length == 0) continue; // drop empty lines
-
-            // Remove language labels
-            l = TrimPrefix(l, "German:");
-            l = TrimPrefix(l, "Deutsch:");
-            l = TrimPrefix(l, "Translation:");
-            l = TrimPrefix(l, "Übersetzung:");
-            cleaned.Add(l);
+            var l = line.TrimEnd();
+            var ls = l.TrimStart();
+            ls = TrimPrefix(ls, "German:");
+            ls = TrimPrefix(ls, "Deutsch:");
+            ls = TrimPrefix(ls, "Translation:");
+            ls = TrimPrefix(ls, "Uebersetzung:");
+            ls = TrimPrefix(ls, "Übersetzung:");
+            if (l.Length > 0 && char.IsWhiteSpace(l[0]) && ls.Length > 0)
+            {
+                ls = " " + ls.TrimStart();
+            }
+            cleaned.Add(ls);
         }
 
-        // If first line equals original, drop it
-        if (cleaned.Count > 0 && !string.IsNullOrWhiteSpace(original))
+        if (!string.IsNullOrWhiteSpace(original))
         {
-            var normA = NormalizeForCompare(cleaned[0]);
-            var normB = NormalizeForCompare(original!);
-            if (normA == normB)
+            for (int i = 0; i < cleaned.Count; i++)
             {
-                cleaned.RemoveAt(0);
+                if (cleaned[i].Length == 0) continue;
+                if (NormalizeForCompare(cleaned[i]) == NormalizeForCompare(original!))
+                {
+                    cleaned.RemoveAt(i);
+                }
+                break;
             }
         }
 
-        if (cleaned.Count == 0) return string.Empty;
-
-        // Heuristic: keep last line if multiple remain (often translation is last)
-        var result = cleaned.Count == 1 ? cleaned[0] : cleaned[^1];
-        result = result.Trim();
-        // Collapse any internal newlines or multiple spaces just in case
-        result = result.Replace('\n', ' ');
-        while (result.Contains("  ")) result = result.Replace("  ", " ");
-        return result.Trim();
+        var result = string.Join("\n", cleaned);
+        return TrimTrailingNewlines(result);
     }
 
-    // Stricter variant that additionally removes common meta-confirmations
+    // Stricter variant that removes meta lines but preserves formatting
     public static string SanitizeTranslationStrict(string? response, string? original)
     {
         if (string.IsNullOrWhiteSpace(response)) return string.Empty;
@@ -109,17 +98,28 @@ public static class TextUtilities
             }
         }
 
-        var parts = text.Split('\n')
-            .Select(s => s.Trim())
-            .Where(s => s.Length > 0)
-            .Select(s => TrimPrefix(TrimPrefix(TrimPrefix(TrimPrefix(TrimPrefix(s,
-                "German:"), "Deutsch:"), "Translation:"), "Übersetzung:"), "German translation:"))
-            .ToList();
+        var parts = text.Split('\n').Select(s => s).ToList();
+        for (int i = 0; i < parts.Count; i++)
+        {
+            var s = parts[i].TrimEnd();
+            var ss = s.TrimStart();
+            ss = TrimPrefix(ss, "German:");
+            ss = TrimPrefix(ss, "Deutsch:");
+            ss = TrimPrefix(ss, "Translation:");
+            ss = TrimPrefix(ss, "Uebersetzung:");
+            ss = TrimPrefix(ss, "Übersetzung:");
+            ss = TrimPrefix(ss, "German translation:");
+            if (s.Length > 0 && char.IsWhiteSpace(s[0]) && ss.Length > 0)
+            {
+                ss = " " + ss.TrimStart();
+            }
+            parts[i] = ss;
+        }
 
-        // Remove generic confirmations/meta
         parts = parts.Where(s =>
         {
-            var r = s.ToLowerInvariant();
+            var r = s.Trim().ToLowerInvariant();
+            if (r.Length == 0) return true; // keep blank lines
             if (r.Contains("this confirms i understand")) return false;
             if (r.Contains("await your text")) return false;
             if (r.Contains("i will now await")) return false;
@@ -128,18 +128,21 @@ public static class TextUtilities
             return true;
         }).ToList();
 
-        if (parts.Count > 0 && !string.IsNullOrWhiteSpace(original))
+        if (!string.IsNullOrWhiteSpace(original))
         {
-            if (NormalizeForCompare(parts[0]) == NormalizeForCompare(original!))
+            for (int i = 0; i < parts.Count; i++)
             {
-                parts.RemoveAt(0);
+                if (parts[i].Trim().Length == 0) continue;
+                if (NormalizeForCompare(parts[i]) == NormalizeForCompare(original!))
+                {
+                    parts.RemoveAt(i);
+                }
+                break;
             }
         }
-        if (parts.Count == 0) return string.Empty;
-        var result = parts.Count == 1 ? parts[0] : parts[^1];
-        result = result.Replace('\n', ' ');
-        while (result.Contains("  ")) result = result.Replace("  ", " ");
-        return result.Trim();
+
+        var result = string.Join("\n", parts);
+        return TrimTrailingNewlines(result);
     }
 
     private static string TrimPrefix(string s, string prefix)
@@ -160,3 +163,4 @@ public static class TextUtilities
         return sb.ToString();
     }
 }
+

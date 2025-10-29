@@ -24,7 +24,7 @@ public sealed class ForegroundTextService
         {
             try
             {
-                Clipboard.SetText(text);
+                Clipboard.SetText(NormalizeNewlinesToWindows(text));
             }
             catch
             {
@@ -117,7 +117,7 @@ public sealed class ForegroundTextService
 
         try
         {
-            Clipboard.SetText(replacement);
+            Clipboard.SetText(NormalizeNewlinesToWindows(replacement));
         }
         catch
         {
@@ -125,7 +125,10 @@ public sealed class ForegroundTextService
         }
 
         BringToForeground(windowHandle);
+        // Try direct paste to focused control first; then Ctrl+V
         SendPaste(windowHandle);
+        Thread.Sleep(800);
+        RestoreClipboard(originalData);
 
         RestoreClipboard(originalData);
     }
@@ -282,7 +285,16 @@ public sealed class ForegroundTextService
         return null;
     }
 
-    private const int WM_COPY = 0x0301;
+
+    private static string NormalizeNewlinesToWindows(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+        var t = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        return t.Replace("\n", "\r\n");
+    }    private const int WM_COPY = 0x0301;
     private const int WM_PASTE = 0x0302;
     private const uint KEYEVENTF_KEYUP = 0x0002;
 
@@ -316,3 +328,5 @@ public readonly struct TextCaptureResult
     public string? FallbackClipboardText { get; }
     public IntPtr WindowHandle { get; }
 }
+
+

@@ -16,3 +16,7 @@ Write-Host "Copying README and installer notes" -ForegroundColor Cyan
 Copy-Item "..\README.md" "$Output\" -Force
 Copy-Item "..\Installer.md" "$Output\" -Force
 
+# Rename output binary to deskLLM.exe if present
+if (Test-Path "$Output\TrayVisionPrompt.Avalonia.exe") {
+    Move-Item -Force "$Output\TrayVisionPrompt.Avalonia.exe" "$Output\deskLLM.exe"
+}

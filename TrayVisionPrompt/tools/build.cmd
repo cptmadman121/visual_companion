@@ -8,7 +8,7 @@ rem - On Release, publishes Avalonia single-file into dist
 set CONFIG=Release
 if /I "%1"=="-Debug" set CONFIG=Debug
 
-echo Building TrayVisionPrompt (%CONFIG%)
+echo Building deskLLM (%CONFIG%)
 dotnet restore ..\TrayVisionPrompt.sln || exit /b %errorlevel%
 dotnet build ..\TrayVisionPrompt.sln -c %CONFIG% || exit /b %errorlevel%
 
@@ -22,10 +22,11 @@ if /I "%CONFIG%"=="Release" (
   echo Publishing Avalonia single-file to !OUT!
   dotnet publish ..\src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=false -p:DebugType=none -o "!OUT!" || exit /b %errorlevel%
   if exist "!OUT!\TrayVisionPrompt.Avalonia.exe" (
-    rem Rename to a simpler product name in dist
-    move /Y "!OUT!\TrayVisionPrompt.Avalonia.exe" "!OUT!\TrayVisionPrompt.exe" >NUL
+    rem Rename to product name in dist
+    move /Y "!OUT!\TrayVisionPrompt.Avalonia.exe" "!OUT!\deskLLM.exe" >NUL
   )
 )
 
 endlocal
 exit /b 0
+

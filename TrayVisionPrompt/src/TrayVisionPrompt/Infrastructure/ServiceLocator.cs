@@ -32,15 +32,28 @@ public class ServiceLocator : IServiceLocator
     public void Initialize()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appFolder = Path.Combine(appData, "TrayVisionPrompt");
+        var appFolder = Path.Combine(appData, "deskLLM");
         Directory.CreateDirectory(appFolder);
+
+        // Migrate existing configuration from previous folder if present
+        try
+        {
+            var oldFolder = Path.Combine(appData, "TrayVisionPrompt");
+            var oldConfig = Path.Combine(oldFolder, "config.json");
+            var newConfig = Path.Combine(appFolder, "config.json");
+            if (!File.Exists(newConfig) && File.Exists(oldConfig))
+            {
+                File.Copy(oldConfig, newConfig, overwrite: false);
+            }
+        }
+        catch { /* ignore migration errors */ }
 
         var configurationManager = new ConfigurationManager(appFolder, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         configurationManager.Load();
 
         var levelSwitch = new LoggingLevelSwitch(MapLogLevel(configurationManager.CurrentConfiguration.LogLevel));
 
-        var logFile = Path.Combine(appFolder, "TrayVisionPrompt.log");
+        var logFile = Path.Combine(appFolder, "deskLLM.log");
         _serilogLogger = new LoggerConfiguration()
             .MinimumLevel.ControlledBy(levelSwitch)
             .WriteTo.File(logFile, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7)
@@ -65,6 +78,7 @@ public class ServiceLocator : IServiceLocator
 
         RegisterSingleton(new CaptureWorkflow(
             Resolve<DialogService>(),
+            Resolve<TrayIconService>(),
             Resolve<IOllmClientFactory>(),
             Resolve<OcrService>(),
             configurationManager,
@@ -77,7 +91,8 @@ public class ServiceLocator : IServiceLocator
             configurationManager,
             Resolve<DialogService>(),
             Resolve<ResponseCache>(),
-            _loggerFactory.CreateLogger<TextWorkflow>()));
+            _loggerFactory.CreateLogger<TextWorkflow>(),
+            Resolve<TrayIconService>()));
 
         RegisterSingleton(new ViewModels.ShellViewModel(
             Resolve<TrayIconService>(),

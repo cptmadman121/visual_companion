@@ -22,7 +22,7 @@ public partial class ResponseDialog : Window
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        System.Windows.Clipboard.SetText(ResponseText.Text);
+        System.Windows.Clipboard.SetText(NormalizeNewlinesToWindows(ResponseText.Text));
     }
 
     private void OnReplace(object sender, RoutedEventArgs e)
@@ -33,7 +33,7 @@ public partial class ResponseDialog : Window
         }
 
         System.Windows.Clipboard.Clear();
-        System.Windows.Clipboard.SetText(ResponseText.Text);
+        System.Windows.Clipboard.SetText(NormalizeNewlinesToWindows(ResponseText.Text));
     }
 
     private void OnSave(object sender, RoutedEventArgs e)
@@ -53,5 +53,12 @@ public partial class ResponseDialog : Window
     private void OnClose(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private static string NormalizeNewlinesToWindows(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var t = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        return t.Replace("\n", "\r\n");
     }
 }

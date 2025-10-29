@@ -16,6 +16,11 @@ public sealed class TrayService : IDisposable
     private string? _iconAsset;
     private const string DefaultIconAsset = "ollama-companion.ico";
     private readonly ContextMenuStrip _menu = new();
+    private readonly System.Windows.Forms.Timer _animTimer = new();
+    private int _pulseStep;
+    private int _busyCount;
+    private Icon? _baseIcon;
+    private Icon? _dynamicIcon;
 
     public event EventHandler? OpenRequested;
     public event EventHandler? SettingsRequested;
@@ -30,8 +35,12 @@ public sealed class TrayService : IDisposable
         {
             Icon = LoadIcon(_iconAsset),
             Visible = false,
-            Text = "TrayVisionPrompt"
+            Text = "deskLLM"
         };
+
+        _baseIcon = _notifyIcon.Icon != null ? (Icon)_notifyIcon.Icon.Clone() : null;
+        _animTimer.Interval = 300; // ms
+        _animTimer.Tick += (_, _) => OnAnimate();
     }
 
     public void Initialize()
@@ -39,6 +48,64 @@ public sealed class TrayService : IDisposable
         _notifyIcon.ContextMenuStrip = _menu;
         UpdatePrompts(Array.Empty<PromptShortcutConfiguration>());
         _notifyIcon.Visible = true;
+    }
+
+    public void StartBusy()
+    {
+        try
+        {
+            if (System.Threading.Interlocked.Increment(ref _busyCount) == 1)
+            {
+                _pulseStep = 0;
+                _animTimer.Start();
+            }
+        }
+        catch { }
+    }
+
+    public void StopBusy()
+    {
+        try
+        {
+            if (System.Threading.Interlocked.Decrement(ref _busyCount) <= 0)
+            {
+                _busyCount = 0;
+                _animTimer.Stop();
+                RestoreBaseIcon();
+            }
+        }
+        catch { }
+    }
+
+    private void OnAnimate()
+    {
+        try
+        {
+            _pulseStep = (_pulseStep + 1) % 8;
+            var scale = 0.6f + 0.4f * (float)Math.Abs(Math.Sin(_pulseStep * Math.PI / 4.0));
+            var icon = CreateOverlayIcon(scale);
+            var old = _dynamicIcon;
+            _dynamicIcon = icon;
+            _notifyIcon.Icon = icon;
+            old?.Dispose();
+        }
+        catch { }
+    }
+
+    private void RestoreBaseIcon()
+    {
+        try
+        {
+            if (_baseIcon == null)
+            {
+                _baseIcon = LoadIcon(_iconAsset);
+            }
+            var old = _dynamicIcon;
+            _dynamicIcon = null;
+            _notifyIcon.Icon = _baseIcon;
+            old?.Dispose();
+        }
+        catch { }
     }
 
     public void UpdatePrompts(IEnumerable<PromptShortcutConfiguration> prompts)
@@ -84,6 +151,7 @@ public sealed class TrayService : IDisposable
             _notifyIcon.Icon = icon;
             previous?.Dispose();
             _iconAsset = effective;
+            _baseIcon = icon != null ? (Icon)icon.Clone() : null;
         }
         catch
         {
@@ -94,7 +162,7 @@ public sealed class TrayService : IDisposable
     private void OpenLogs()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var folder = Path.Combine(appData, "TrayVisionPrompt");
+        var folder = Path.Combine(appData, "deskLLM");
         Directory.CreateDirectory(folder);
         Process.Start(new ProcessStartInfo { FileName = folder, UseShellExecute = true });
     }
@@ -103,7 +171,47 @@ public sealed class TrayService : IDisposable
     {
         try { _notifyIcon.Visible = false; } catch { }
         _menu.Dispose();
+        _animTimer.Stop();
+        _dynamicIcon?.Dispose();
+        _baseIcon?.Dispose();
         _notifyIcon.Dispose();
+    }
+
+    private Icon CreateOverlayIcon(float overlayScale)
+    {
+        var baseIcon = _baseIcon ?? _notifyIcon.Icon ?? LoadIcon(_iconAsset);
+        using var bmp = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            if (baseIcon != null)
+            {
+                g.DrawIcon(baseIcon, new Rectangle(0, 0, 32, 32));
+            }
+
+            var radius = Math.Max(5f, 6.5f * overlayScale);
+            var center = new System.Drawing.PointF(25.5f, 25.5f);
+            var alpha = (int)(200 + 55 * overlayScale);
+            using var dotBrush = new SolidBrush(Color.FromArgb(Math.Min(255, Math.Max(0, alpha)), 46, 204, 113));
+            using var outline = new Pen(Color.White, 1.6f);
+            var x = center.X - radius;
+            var y = center.Y - radius;
+            var d = radius * 2f;
+            g.FillEllipse(dotBrush, x, y, d, d);
+            g.DrawEllipse(outline, x, y, d, d);
+        }
+
+        var handle = bmp.GetHicon();
+        try
+        {
+            using var icon = Icon.FromHandle(handle);
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            NativeMethods.DestroyIcon(handle);
+        }
     }
 
 
@@ -271,4 +379,6 @@ public sealed class TrayService : IDisposable
         public static extern bool DestroyIcon(IntPtr hIcon);
     }
 }
+
+
 
