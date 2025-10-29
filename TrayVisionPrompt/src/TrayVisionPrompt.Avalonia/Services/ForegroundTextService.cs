@@ -139,6 +139,12 @@ public sealed class ForegroundTextService
         // Try direct paste first; fall back to Ctrl+V
         SendPaste(windowHandle);
 
+        // Give the target application time to process the keyboard paste
+        // before restoring the original clipboard contents. Without this,
+        // the Ctrl+V handler may read the restored (possibly empty) clipboard
+        // resulting in the selection being replaced by nothing.
+        Thread.Sleep(200);
+
         RestoreClipboard(originalData);
     }
 
