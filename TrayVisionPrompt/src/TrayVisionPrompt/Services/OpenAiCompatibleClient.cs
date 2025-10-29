@@ -26,7 +26,8 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
     public async Task<LlmResponse> GetResponseAsync(LlmRequest request)
     {
         var payload = BuildPayload(request);
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, _configuration.Endpoint)
+        var endpoint = NormalizeEndpoint(_configuration.Endpoint);
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = JsonContent.Create(payload)
         };
@@ -115,5 +116,22 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
     public void Dispose()
     {
         _httpClient.Dispose();
+    }
+
+    private static string NormalizeEndpoint(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return "http://127.0.0.1:11434/v1/chat/completions";
+        }
+        if (raw.Contains("/v1/", StringComparison.OrdinalIgnoreCase))
+        {
+            return raw;
+        }
+        if (raw.EndsWith("/", StringComparison.Ordinal))
+        {
+            raw = raw.TrimEnd('/');
+        }
+        return raw + "/v1/chat/completions";
     }
 }

@@ -106,6 +106,8 @@ public class TrayIconService : IDisposable
 
     public void Dispose()
     {
+        try { _notifyIcon.Visible = false; } catch { }
+        _menu.Dispose();
         _notifyIcon.Dispose();
     }
 

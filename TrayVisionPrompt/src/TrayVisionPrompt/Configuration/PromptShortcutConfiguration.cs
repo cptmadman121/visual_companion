@@ -116,9 +116,9 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    public const string DefaultProofreadPrompt = "Proofread and improve grammar, spelling, and clarity. Preserve tone and meaning. Return only the corrected text. Keep formatting, newlines, tabs etc. exactly as in the original text.";
-    public const string DefaultTranslatePrompt = "If the text is english, translate it to German. If the text is German, translate it to English. All while preserving meaning, tone, and formatting. Return only the translation.";
-    public const string DefaultAnonymizePrompt = "Anonymize the provided text. Replace personal data such as real names, email addresses, phone numbers, or postal addresses with realistic but fictitious placeholders. Preserve formatting and return only the sanitized text.";
+    public const string DefaultProofreadPrompt = "Proofread and improve grammar, spelling, and clarity, while maintaining the original language of the text. Preserve tone and meaning. Keep formatting, newlines, tabs etc. exactly as in the original text. Return only the corrected text.";
+    public const string DefaultTranslatePrompt = "If the provided text is not in German, translate it into German. If the provided text is in German, translate it into English. The entire translation process should preserve the tone, structure, and formatting of the original text. Return only the translated text.";
+    public const string DefaultAnonymizePrompt = "Anonymize the provided text. Replace personal data such as real names, email addresses, phone numbers, or postal addresses with fictitious placeholders from the shows 'The Simpsons' or 'Futurama'. Preserve formatting and return only the sanitized text.";
 }
 
 public enum PromptActivationMode

@@ -11,9 +11,16 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
-        var store = new ConfigurationStore();
-        Icon = IconProvider.LoadWindowIcon(store.Current.IconAsset);
-        DataContext = new SettingsViewModel();
+        try
+        {
+            var store = new ConfigurationStore();
+            Icon = IconProvider.LoadWindowIcon(store.Current.IconAsset);
+            DataContext = new SettingsViewModel();
+        }
+        catch
+        {
+            DataContext = new SettingsViewModel();
+        }
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

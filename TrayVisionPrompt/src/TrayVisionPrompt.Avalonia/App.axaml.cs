@@ -52,7 +52,7 @@ public partial class App : global::Avalonia.Application
             _tray.OpenRequested += (_, _) => ShowMainWindow();
             _tray.SettingsRequested += (_, _) => ShowSettings();
             _tray.TestRequested += async (_, _) => await TestBackendAsync();
-            _tray.ExitRequested += (_, _) => desktop.Shutdown();
+            _tray.ExitRequested += (_, _) => { try { _tray?.Dispose(); } catch { } desktop.Shutdown(); };
             _tray.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut);
             _tray.UpdatePrompts(_store.Current.PromptShortcuts);
 
@@ -141,27 +141,36 @@ public partial class App : global::Avalonia.Application
 
     private async System.Threading.Tasks.Task RunForegroundPromptAsync(PromptShortcutConfiguration shortcut)
     {
+        // Capture on a background STA first to avoid stealing focus from the target app
+        var capture = await _textService.CaptureAsync();
+        if (string.IsNullOrWhiteSpace(capture.Text))
+        {
+            await ShowMessageAsync("No text selection or clipboard text found.");
+            return;
+        }
+
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            var capture = await _textService.CaptureAsync();
-            if (string.IsNullOrWhiteSpace(capture.Text))
-            {
-                await ShowMessageAsync("No text selection or clipboard text found.");
-                return;
-            }
-
             try
             {
                 using var llm = new LlmService();
                 var extra = string.IsNullOrWhiteSpace(shortcut.Prompt)
-                    ? PromptShortcutConfiguration.DefaultProofreadPrompt
+                    ? (IsTranslateShortcut(shortcut)
+                        ? PromptShortcutConfiguration.DefaultTranslatePrompt
+                        : PromptShortcutConfiguration.DefaultProofreadPrompt)
                     : shortcut.Prompt;
                 var systemPrompt = ComposeSystemPrompt(extra);
-                var response = await llm.SendAsync(capture.Text!, systemPrompt: systemPrompt);
+                var userContent = capture.Text!;
+                if (IsTranslateShortcut(shortcut))
+                {
+                    userContent = "Translate the following text exactly as instructed above. Return only the translated text.\n\nText:\n" + capture.Text!;
+                }
+                var response = await llm.SendAsync(userContent, systemPrompt: systemPrompt);
                 response = TextUtilities.TrimTrailingNewlines(response);
                 if (IsTranslateShortcut(shortcut))
                 {
-                    response = TextUtilities.SanitizeTranslationResponse(response, capture.Text!);
+                    var sanitized = TextUtilities.SanitizeTranslationStrict(response, capture.Text!);
+                    response = string.IsNullOrWhiteSpace(sanitized) ? response : sanitized;
                 }
                 if (string.IsNullOrWhiteSpace(response))
                 {
@@ -247,8 +256,15 @@ public partial class App : global::Avalonia.Application
     {
         Dispatcher.UIThread.Post(async () =>
         {
-            var wnd = new SettingsWindow();
-            await wnd.ShowDialog(GetOwnerWindow());
+            try
+            {
+                var wnd = new SettingsWindow();
+                await wnd.ShowDialog(GetOwnerWindow());
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync($"Settings error: {ex.Message}");
+            }
         });
     }
 
