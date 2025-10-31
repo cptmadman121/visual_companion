@@ -53,7 +53,7 @@ public partial class App : global::Avalonia.Application
             _tray.SettingsRequested += (_, _) => ShowSettings();
             _tray.TestRequested += async (_, _) => await TestBackendAsync();
             _tray.ExitRequested += (_, _) => { try { _tray?.Dispose(); } catch { } desktop.Shutdown(); };
-            _tray.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut);
+            _tray.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut, useClipboardFallback: true);
             _tray.UpdatePrompts(_store.Current.PromptShortcuts);
 
             _hotkey = new WinHotkeyRegistrar();
@@ -96,7 +96,7 @@ public partial class App : global::Avalonia.Application
                 }
                 ask.SetThumbnail(img);
                 await ask.ShowDialog(GetOwnerWindow());
-                if (!ask.Confirmed) return;
+                if (!ask.Confirmed) { _tray?.ClearStatus(); return; }
 
                 var resp = new ResponseDialog { ResponseText = "Analyzing selection… contacting backend…" };
                 _ = resp.ShowDialog(GetOwnerWindow());
@@ -126,10 +126,15 @@ public partial class App : global::Avalonia.Application
                     _tray?.StopBusy();
                 }
             }
+            else
+            {
+                _tray?.ClearStatus();
+                return;
+            }
         });
     }
 
-    private async System.Threading.Tasks.Task ExecutePromptAsync(PromptShortcutConfiguration shortcut)
+    private async System.Threading.Tasks.Task ExecutePromptAsync(PromptShortcutConfiguration shortcut, bool useClipboardFallback = false)
     {
         switch (shortcut.Activation)
         {
@@ -137,20 +142,41 @@ public partial class App : global::Avalonia.Application
                 await StartCaptureAsync(shortcut);
                 break;
             case PromptActivationMode.ForegroundSelection:
-                await RunForegroundPromptAsync(shortcut);
+                if (useClipboardFallback)
+                {
+                    await RunClipboardPromptAsync(shortcut, showResponseDialog: true);
+                }
+                else
+                {
+                    await RunForegroundPromptAsync(shortcut);
+                }
                 break;
             case PromptActivationMode.TextDialog:
-                await RunTextDialogPromptAsync(shortcut);
+                if (useClipboardFallback)
+                {
+                    await RunClipboardPromptAsync(shortcut, showResponseDialog: true);
+                }
+                else
+                {
+                    await RunTextDialogPromptAsync(shortcut);
+                }
                 break;
         }
     }
 
     private async System.Threading.Tasks.Task RunForegroundPromptAsync(PromptShortcutConfiguration shortcut)
     {
+        if (await _textService.IsRocketChatForegroundAsync())
+        {
+            await RunClipboardPromptAsync(shortcut, showResponseDialog: false);
+            return;
+        }
+
         // Capture on a background STA first to avoid stealing focus from the target app
         var capture = await _textService.CaptureAsync();
         if (string.IsNullOrWhiteSpace(capture.Text))
         {
+            _tray?.ClearStatus();
             await ShowMessageAsync("No text selection or clipboard text found.");
             return;
         }
@@ -159,21 +185,10 @@ public partial class App : global::Avalonia.Application
         {
             try
             {
-                using var llm = new LlmService();
-                var extra = string.IsNullOrWhiteSpace(shortcut.Prompt)
-                    ? (IsTranslateShortcut(shortcut)
-                        ? PromptShortcutConfiguration.DefaultTranslatePrompt
-                        : PromptShortcutConfiguration.DefaultProofreadPrompt)
-                    : shortcut.Prompt;
-                var systemPrompt = SystemPromptBuilder.BuildForSelection(capture.Text, extra, _store.Current.Language);
-                var userContent = capture.Text!;
-                if (IsTranslateShortcut(shortcut))
-                {
-                    userContent = "Translate the following text exactly as instructed above. Return only the translated text.\n\nText:\n" + capture.Text!;
-                }
+                _tray?.ShowPending();
                 _tray?.StartBusy();
-                var response = await llm.SendAsync(userContent, systemPrompt: systemPrompt);
-                response = TextUtilities.TrimTrailingNewlines(response);
+                var response = await ExecuteTextPromptAsync(capture.Text!, shortcut);
+                response = TextUtilities.TrimTrailingNewlines(response ?? string.Empty);
                 if (IsTranslateShortcut(shortcut))
                 {
                     var sanitized = TextUtilities.SanitizeTranslationStrict(response, capture.Text!);
@@ -218,16 +233,15 @@ public partial class App : global::Avalonia.Application
             var input = await dialog.ShowDialog<string?>(owner);
             if (string.IsNullOrWhiteSpace(input))
             {
+                _tray?.ClearStatus();
                 return;
             }
 
             try
             {
-                using var llm = new LlmService();
-                var systemPrompt = SystemPromptBuilder.BuildForSelection(input, string.IsNullOrWhiteSpace(shortcut.Prompt) ? null : shortcut.Prompt, _store.Current.Language);
                 _tray?.StartBusy();
-                var response = await llm.SendAsync(input, systemPrompt: systemPrompt);
-                response = TextUtilities.TrimTrailingNewlines(response);
+                var response = await ExecuteTextPromptAsync(input, shortcut);
+                response = TextUtilities.TrimTrailingNewlines(response ?? string.Empty);
                 if (string.IsNullOrWhiteSpace(response))
                 {
                     await ShowMessageAsync("(empty response)");
@@ -247,6 +261,121 @@ public partial class App : global::Avalonia.Application
                 _tray?.StopBusy();
             }
         });
+    }
+
+    private async System.Threading.Tasks.Task RunClipboardPromptAsync(PromptShortcutConfiguration shortcut, bool showResponseDialog)
+    {
+        var clipboardText = await _textService.GetClipboardTextAsync();
+        if (string.IsNullOrWhiteSpace(clipboardText))
+        {
+            _tray?.ClearStatus();
+            await ShowMessageAsync("Clipboard is empty. Copy text before using the tray prompt.");
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            try
+            {
+                _tray?.ShowPending();
+                _tray?.StartBusy();
+                var response = await ExecuteTextPromptAsync(clipboardText, shortcut);
+                response = TextUtilities.TrimTrailingNewlines(response ?? string.Empty);
+                if (IsTranslateShortcut(shortcut))
+                {
+                    var sanitized = TextUtilities.SanitizeTranslationStrict(response, clipboardText);
+                    response = string.IsNullOrWhiteSpace(sanitized) ? response : sanitized;
+                }
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    await ShowMessageAsync("(empty response)");
+                    return;
+                }
+
+                await _textService.SetClipboardTextAsync(response);
+                if (showResponseDialog)
+                {
+                    var dlg = new ResponseDialog { ResponseText = response };
+                    await dlg.ShowDialog(GetOwnerWindow());
+                }
+            }
+            catch (Exception ex)
+            {
+                await ShowMessageAsync($"Error: {ex.Message}");
+            }
+            finally
+            {
+                _tray?.StopBusy();
+            }
+        });
+    }
+
+    private async System.Threading.Tasks.Task<string?> ExecuteTextPromptAsync(string input, PromptShortcutConfiguration shortcut)
+    {
+        var tokenBudget = Math.Max(2048, Math.Min(_store.Current.MaxTokens, 8192));
+        var chunks = TextChunker.Split(input, tokenBudget);
+        if (chunks.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var isTranslate = IsTranslateShortcut(shortcut);
+        var effectivePrompt = string.IsNullOrWhiteSpace(shortcut.Prompt)
+            ? (isTranslate
+                ? PromptShortcutConfiguration.DefaultTranslatePrompt
+                : PromptShortcutConfiguration.DefaultProofreadPrompt)
+            : shortcut.Prompt;
+
+        using var llm = new LlmService();
+        var combined = new System.Text.StringBuilder();
+
+        for (var index = 0; index < chunks.Count; index++)
+        {
+            var chunk = chunks[index];
+            var systemPrompt = SystemPromptBuilder.BuildForSelection(chunk, effectivePrompt, _store.Current.Language);
+            var userContent = BuildChunkUserContent(chunk, effectivePrompt, isTranslate, index, chunks.Count);
+            var response = await llm.SendAsync(userContent, systemPrompt: systemPrompt);
+            response = TextUtilities.TrimTrailingNewlines(response);
+            if (!string.IsNullOrWhiteSpace(response))
+            {
+                combined.Append(response.TrimEnd());
+                if (index < chunks.Count - 1)
+                {
+                    combined.AppendLine();
+                }
+            }
+        }
+
+        return combined.ToString();
+    }
+
+    private static string BuildChunkUserContent(string chunk, string? instructions, bool isTranslate, int index, int total)
+    {
+        var builder = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(instructions))
+        {
+            builder.AppendLine(instructions.Trim());
+            builder.AppendLine();
+        }
+
+        if (isTranslate)
+        {
+            var prefix = total > 1 ? $"Part {index + 1}/{total}. " : string.Empty;
+            builder.AppendLine($"{prefix}Translate the following text exactly as instructed above. Return only the translated text.");
+            builder.AppendLine();
+            builder.AppendLine("Text:");
+            builder.AppendLine(chunk);
+            return builder.ToString();
+        }
+
+        if (total > 1)
+        {
+            builder.AppendLine($"[Part {index + 1}/{total}] Apply the instructions to this portion only and preserve formatting.");
+            builder.AppendLine();
+        }
+
+        builder.Append(chunk);
+        return builder.ToString();
     }
 
     private async System.Threading.Tasks.Task TestBackendAsync()

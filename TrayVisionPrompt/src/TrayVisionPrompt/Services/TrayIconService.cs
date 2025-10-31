@@ -64,6 +64,8 @@ public class TrayIconService : IDisposable
             {
                 _pulseStep = 0;
                 _animTimer.Start();
+                // Immediately show animated green overlay without waiting for first tick
+                OnAnimate();
             }
         }
         catch { /* ignore */ }
@@ -83,13 +85,38 @@ public class TrayIconService : IDisposable
         catch { /* ignore */ }
     }
 
+    public void ShowPending()
+    {
+        try
+        {
+            _animTimer.Stop();
+            var icon = CreateIcon(withOverlay: true, overlayScale: 1.0f, pending: true);
+            var old = _dynamicIcon;
+            _dynamicIcon = icon;
+            _notifyIcon.Icon = icon;
+            old?.Dispose();
+        }
+        catch { /* ignore */ }
+    }
+
+    public void ClearStatus()
+    {
+        try
+        {
+            _busyCount = 0;
+            _animTimer.Stop();
+            RestoreBaseIcon();
+        }
+        catch { /* ignore */ }
+    }
+
     private void OnAnimate()
     {
         try
         {
             _pulseStep = (_pulseStep + 1) % 8;
             var scale = 0.6f + 0.4f * (float)Math.Abs(Math.Sin(_pulseStep * Math.PI / 4.0));
-            var icon = CreateIcon(withOverlay: true, overlayScale: scale);
+            var icon = CreateIcon(withOverlay: true, overlayScale: scale, pending: false);
             // swap icons; dispose previous dynamic icon to avoid handle leaks
             var old = _dynamicIcon;
             _dynamicIcon = icon;
@@ -180,7 +207,7 @@ public class TrayIconService : IDisposable
         _notifyIcon.Dispose();
     }
 
-    private Icon CreateIcon(bool withOverlay = false, float overlayScale = 1.0f)
+    private Icon CreateIcon(bool withOverlay = false, float overlayScale = 1.0f, bool pending = false)
     {
         using var bitmap = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
         using (var graphics = Graphics.FromImage(bitmap))
@@ -207,7 +234,8 @@ public class TrayIconService : IDisposable
                 var radius = Math.Max(5f, 6.5f * overlayScale);
                 var center = new PointF(25.5f, 25.5f);
                 var alpha = (int)(200 + 55 * overlayScale); // 200..255
-                using var dotBrush = new SolidBrush(Color.FromArgb(Math.Min(255, Math.Max(0, alpha)), 46, 204, 113)); // greenish
+                var (r, g, b) = pending ? (241, 196, 15) : (46, 204, 113); // yellow vs green
+                using var dotBrush = new SolidBrush(Color.FromArgb(Math.Min(255, Math.Max(0, alpha)), r, g, b)); // status color
                 using var outline = new Pen(Color.White, 1.6f);
                 var x = center.X - radius;
                 var y = center.Y - radius;

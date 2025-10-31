@@ -40,7 +40,7 @@ public partial class ShellViewModel : ObservableObject
     public void Initialize()
     {
         _trayIconService.Initialize();
-        _trayIconService.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut);
+        _trayIconService.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut, useClipboardFallback: true);
         _trayIconService.TestBackendRequested += async (_, _) => await TestBackendAsync();
         _trayIconService.SettingsRequested += (_, _) => OpenSettings();
         _trayIconService.CopyLastResponseRequested += (_, _) => CopyLastResponse();
@@ -78,7 +78,7 @@ public partial class ShellViewModel : ObservableObject
         }
     }
 
-    private async Task ExecutePromptAsync(PromptShortcutConfiguration shortcut)
+    private async Task ExecutePromptAsync(PromptShortcutConfiguration shortcut, bool useClipboardFallback = false)
     {
         try
         {
@@ -88,7 +88,7 @@ public partial class ShellViewModel : ObservableObject
                     await _captureWorkflow.ExecuteAsync(shortcut);
                     break;
                 default:
-                    await _textWorkflow.ExecuteAsync(shortcut);
+                    await _textWorkflow.ExecuteAsync(shortcut, useClipboardFallback);
                     break;
             }
         }

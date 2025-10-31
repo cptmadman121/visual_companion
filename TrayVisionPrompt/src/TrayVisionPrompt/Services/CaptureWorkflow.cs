@@ -41,6 +41,7 @@ public class CaptureWorkflow
         if (captureResult == null)
         {
             _logger.LogInformation("Capture cancelled by user");
+            _trayIconService.ClearStatus();
             return;
         }
 
@@ -53,6 +54,7 @@ public class CaptureWorkflow
         if (instruction == null)
         {
             _logger.LogInformation("Instruction dialog cancelled");
+            _trayIconService.ClearStatus();
             return;
         }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +32,30 @@ public sealed class ForegroundTextService
                 // ignore clipboard failures
             }
         }, cancellationToken);
+    }
+
+    public async Task<string?> GetClipboardTextAsync(CancellationToken cancellationToken = default)
+    {
+        return await RunStaAsync(() =>
+        {
+            try
+            {
+                return Clipboard.ContainsText() ? Clipboard.GetText() : null;
+            }
+            catch
+            {
+                return null;
+            }
+        });
+    }
+
+    public async Task<bool> IsRocketChatForegroundAsync(CancellationToken cancellationToken = default)
+    {
+        return await RunStaAsync(() =>
+        {
+            var hwnd = GetForegroundWindow();
+            return IsRocketChatWindow(hwnd);
+        });
     }
 
     private static TextCaptureResult CaptureInternal(CancellationToken cancellationToken)
@@ -294,7 +319,40 @@ public sealed class ForegroundTextService
         }
         var t = text.Replace("\r\n", "\n").Replace('\r', '\n');
         return t.Replace("\n", "\r\n");
-    }    private const int WM_COPY = 0x0301;
+    }
+
+    private static bool IsRocketChatWindow(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = GetWindowThreadProcessId(hWnd, out var processId);
+            if (processId == 0)
+            {
+                return false;
+            }
+
+            using var process = Process.GetProcessById((int)processId);
+            var name = process.ProcessName;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            name = name.ToLowerInvariant();
+            return name.Contains("rocket") && name.Contains("chat");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private const int WM_COPY = 0x0301;
     private const int WM_PASTE = 0x0302;
     private const uint KEYEVENTF_KEYUP = 0x0002;
 
@@ -309,6 +367,9 @@ public sealed class ForegroundTextService
 
     [DllImport("user32.dll")]
     private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }
 
 public readonly struct TextCaptureResult
