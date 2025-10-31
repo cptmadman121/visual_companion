@@ -14,6 +14,7 @@ public class LlmService : IDisposable
 {
     private readonly ConfigurationStore _store = new();
     private readonly HttpClient _httpClient;
+    private const int MaxRequestTimeoutMs = 180_000;
 
     public LlmService()
     {
@@ -79,7 +80,8 @@ public class LlmService : IDisposable
             messages
         };
 
-        using var cts = CreateLinkedCts(cfg.RequestTimeoutMs, cancellationToken);
+        var timeout = CalculateTimeout(prompt, cfg.RequestTimeoutMs);
+        using var cts = CreateLinkedCts(timeout, cancellationToken);
 
         var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
@@ -107,9 +109,10 @@ public class LlmService : IDisposable
             handler.Proxy = new System.Net.WebProxy(cfg.Proxy);
             handler.UseProxy = true;
         }
+        var effectiveTimeout = Math.Max(60_000, Math.Min(MaxRequestTimeoutMs, Math.Max(1_000, cfg.RequestTimeoutMs)));
         return new HttpClient(handler)
         {
-            Timeout = TimeSpan.FromMilliseconds(Math.Max(1000, cfg.RequestTimeoutMs))
+            Timeout = TimeSpan.FromMilliseconds(effectiveTimeout)
         };
     }
 
@@ -180,6 +183,14 @@ public class LlmService : IDisposable
             cts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
         }
         return cts;
+    }
+
+    private static int CalculateTimeout(string prompt, int baseTimeout)
+    {
+        var effectiveBase = Math.Max(45_000, baseTimeout);
+        var length = prompt?.Length ?? 0;
+        var extra = Math.Min(120_000, length * 4);
+        return Math.Min(effectiveBase + extra, MaxRequestTimeoutMs);
     }
 
     public void Dispose()

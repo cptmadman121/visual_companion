@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Diagnostics;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
@@ -31,6 +32,30 @@ public sealed class ForegroundTextService
                 // ignore clipboard failures
             }
         }, cancellationToken);
+    }
+
+    public async Task<string?> GetClipboardTextAsync(CancellationToken cancellationToken = default)
+    {
+        return await RunStaAsync(() =>
+        {
+            try
+            {
+                return Clipboard.ContainsText() ? Clipboard.GetText() : null;
+            }
+            catch
+            {
+                return null;
+            }
+        });
+    }
+
+    public async Task<bool> IsRocketChatForegroundAsync(CancellationToken cancellationToken = default)
+    {
+        return await RunStaAsync(() =>
+        {
+            var hwnd = GetForegroundWindow();
+            return IsRocketChatWindow(hwnd);
+        });
     }
 
     private static TextCaptureResult CaptureInternal(CancellationToken cancellationToken)
@@ -68,7 +93,10 @@ public sealed class ForegroundTextService
         string? capturedText = null;
         var start = Environment.TickCount64;
         var nudgedAt = start;
-        while (Environment.TickCount64 - start < 2500)
+        var isChromiumLike = IsChromiumLikeWindow(foreground);
+        // Chromium/Electron apps sometimes need a bit longer
+        long maxWait = isChromiumLike ? 3500 : 2500;
+        while (Environment.TickCount64 - start < maxWait)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -84,10 +112,15 @@ public sealed class ForegroundTextService
             }
             catch { /* ignore clipboard probe errors */ }
 
-            // Re-issue Ctrl+C occasionally in case the target app needs a user gesture
+            // Re-issue copy occasionally in case the target app needs a user gesture
             if (Environment.TickCount64 - nudgedAt > 150)
             {
                 SendCopyShortcut(foreground);
+                if (isChromiumLike)
+                {
+                    // Some Chromium/Electron windows honor Ctrl+Insert for Copy
+                    SendCopyAlternativeShortcut(foreground);
+                }
                 nudgedAt = Environment.TickCount64;
             }
 
@@ -136,15 +169,23 @@ public sealed class ForegroundTextService
         }
 
         BringToForeground(windowHandle);
-        // Try direct paste first; fall back to Ctrl+V
+        // Try direct paste first; then keyboard alternative if needed
         SendPaste(windowHandle);
+
+        var isChromiumLike = IsChromiumLikeWindow(windowHandle);
+        if (isChromiumLike)
+        {
+            // Some Chromium/Electron windows honor Shift+Insert for Paste
+            SendPasteAlternativeShortcut(windowHandle);
+        }
 
         // Give the target application ample time to process the keyboard paste
         // before restoring the original clipboard contents. Some editors
         // (e.g., Notepad++) process Ctrl+V asynchronously and can read from the
         // clipboard after a noticeable delay. Too short a delay can lead to an
         // empty replacement. Increase to improve reliability.
-        Thread.Sleep(800);
+        var pasteDelay = isChromiumLike ? 2000 : 900;
+        Thread.Sleep(pasteDelay);
 
         RestoreClipboard(originalData);
     }
@@ -255,6 +296,22 @@ public sealed class ForegroundTextService
         SendShortcut(Keys.ControlKey, Keys.V);
     }
 
+    private static void SendCopyAlternativeShortcut(IntPtr windowHandle)
+    {
+        BringToForeground(windowHandle);
+        ReleaseActiveModifiers();
+        // Ctrl+Insert is an alternative Copy accelerator in many apps
+        SendShortcut(Keys.ControlKey, Keys.Insert);
+    }
+
+    private static void SendPasteAlternativeShortcut(IntPtr windowHandle)
+    {
+        BringToForeground(windowHandle);
+        ReleaseActiveModifiers();
+        // Shift+Insert is an alternative Paste accelerator in many apps
+        SendShortcut(Keys.ShiftKey, Keys.Insert);
+    }
+
     private static void SendShortcut(Keys modifier, Keys key)
     {
         var inputs = new INPUT[4];
@@ -360,6 +417,37 @@ public sealed class ForegroundTextService
         return null;
     }
 
+    private static bool IsChromiumLikeWindow(IntPtr windowHandle)
+    {
+        try
+        {
+            if (windowHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+            var threadId = GetWindowThreadProcessId(windowHandle, out var pid);
+            if (pid == 0)
+            {
+                return false;
+            }
+            using var proc = Process.GetProcessById((int)pid);
+            var name = string.Empty;
+            var path = string.Empty;
+            try { name = (proc.ProcessName ?? string.Empty).ToLowerInvariant(); } catch { }
+            try { path = (proc.MainModule?.FileName ?? string.Empty).ToLowerInvariant(); } catch { }
+
+            // Heuristics for Chromium/Electron-based apps and Rocket.Chat
+            bool match(string s) =>
+                s.Contains("chrome") || s.Contains("electron") || s.Contains("msedge") ||
+                s.Contains("brave") || s.Contains("webview") || s.Contains("rocketchat") || s.Contains("rocket.chat");
+            return match(name) || match(path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static void RestoreClipboard(IDataObject? data)
     {
         if (data == null)
@@ -382,6 +470,37 @@ public sealed class ForegroundTextService
         catch
         {
             // ignore clipboard restore issues
+        }
+    }
+
+    private static bool IsRocketChatWindow(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        try
+        {
+            _ = GetWindowThreadProcessId(hWnd, out var processId);
+            if (processId == 0)
+            {
+                return false;
+            }
+
+            using var process = Process.GetProcessById((int)processId);
+            var name = process.ProcessName;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            name = name.ToLowerInvariant();
+            return name.Contains("rocket") && name.Contains("chat");
+        }
+        catch
+        {
+            return false;
         }
     }
 

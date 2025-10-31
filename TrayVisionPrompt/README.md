@@ -9,6 +9,8 @@ It targets quick day-to-day workflows like proofreading and translating selected
 - Global hotkeys for each prompt; per-prompt activation: Capture Screen, Foreground Selection, or Text Dialog.
 - Annotation overlay for screen capture (select area, draw/undo, reset, confirm/cancel).
 - OpenAI-compatible clients: Ollama, vLLM, llama.cpp; optional OCR fallback when vision is disabled.
+- Instant feedback on hotkeys: yellow dot appears immediately when a hotkey is pressed; turns green while the request is sent to the LLM.
+- Tray menu prompts fall back to clipboard input/output, so Electron apps and browsers work reliably.
 - Configuration and logs stored under `%APPDATA%\deskLLM`.
 
 **What’s New**
@@ -101,9 +103,19 @@ Tips
 **Troubleshooting**
 - If a hotkey fails to register, you’ll see a warning; adjust the hotkey to avoid conflicts.
 - Some apps restrict clipboard access; in that case, the app falls back to using the clipboard directly.
+- Very long selections are chunked automatically so they stay within Gemma 3 27B’s context window; each segment is processed in sequence and combined for the final output.
+
+**Rocket.Chat Desktop (Chromium/Electron)**
+  - Foreground selection and replacement are optimized for Chromium/Electron apps (including Rocket.Chat) by trying alternative accelerators (Ctrl+Insert for copy, Shift+Insert for paste) and allowing slightly longer timing.
+  - New clipboard-first flow: if Rocket.Chat is focused when you press a hotkey, deskLLM reuses the current clipboard text, sends it to the LLM, and drops the answer back into the clipboard; just press `Ctrl+V` to send, no pop-up.
+  - If global hotkeys don't trigger while Rocket.Chat is focused:
+    - Change your hotkey combinations to avoid conflicts (e.g., avoid ones Rocket.Chat uses).
+    - Ensure deskLLM and Rocket.Chat run at the same privilege level (both non-admin). Mixed elevation can interfere with system-wide hotkeys.
+    - If problems persist, use the tray menu to trigger prompts as a workaround.
 
 **License**
 - Internal/for local use. No telemetry. See repository policies if present.
+
 
 
 

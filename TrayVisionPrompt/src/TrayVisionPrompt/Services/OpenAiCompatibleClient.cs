@@ -15,6 +15,7 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
     private readonly HttpClient _httpClient;
     private readonly AppConfiguration _configuration;
     private readonly ILogger _logger;
+    private const int MaxRequestTimeoutMs = 180_000;
 
     protected OpenAiCompatibleClient(AppConfiguration configuration, ILogger logger)
     {
@@ -36,7 +37,7 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
 
         _logger.LogDebug("Sending payload: {Payload}", JsonSerializer.Serialize(payload));
 
-        using var cts = new System.Threading.CancellationTokenSource(_configuration.RequestTimeoutMs);
+        using var cts = new System.Threading.CancellationTokenSource(CalculateTimeout(request));
         var start = DateTime.UtcNow;
         var response = await _httpClient.SendAsync(httpRequest, cts.Token);
         if (!response.IsSuccessStatusCode)
@@ -71,7 +72,7 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
 
         var client = new HttpClient(handler)
         {
-            Timeout = TimeSpan.FromMilliseconds(configuration.RequestTimeoutMs)
+            Timeout = TimeSpan.FromMilliseconds(Math.Max(configuration.RequestTimeoutMs, MaxRequestTimeoutMs))
         };
 
         return client;
@@ -116,6 +117,14 @@ public abstract class OpenAiCompatibleClient : IOllmClient, IDisposable
     public void Dispose()
     {
         _httpClient.Dispose();
+    }
+
+    private int CalculateTimeout(LlmRequest request)
+    {
+        var baseTimeout = Math.Max(45_000, _configuration.RequestTimeoutMs);
+        var promptLength = request.Prompt?.Length ?? 0;
+        var extraBudget = Math.Min(120_000, promptLength * 4);
+        return Math.Min(baseTimeout + extraBudget, MaxRequestTimeoutMs);
     }
 
     private static string NormalizeEndpoint(string raw)
