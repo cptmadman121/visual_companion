@@ -1,26 +1,34 @@
-using Microsoft.Extensions.Logging.Abstractions;
+using System.Linq;
 using TrayVisionPrompt.Configuration;
-using TrayVisionPrompt.Services;
 using Xunit;
 
 namespace TvPrompt.Tests;
 
-public class OllmClientFactoryTests
+public class PromptShortcutConfigurationTests
 {
-    [Theory]
-    [InlineData("ollama", typeof(OllamaClient))]
-    [InlineData("vllm", typeof(VllmClient))]
-    [InlineData("llamacpp", typeof(LlamaCppClient))]
-    public void Create_ReturnsExpectedClientType(string backend, System.Type expectedType)
+    [Fact]
+    public void Clone_CreatesDistinctInstance()
     {
-        var config = new AppConfiguration
-        {
-            Backend = backend
-        };
+        var prompt = PromptShortcutConfiguration.CreateTextSelection("Test", "Ctrl+Alt+T", "Do something");
+        var clone = prompt.Clone();
 
-        var factory = new OllmClientFactory(NullLogger.Instance);
-        var client = factory.Create(config);
+        Assert.NotSame(prompt, clone);
+        Assert.NotEqual(prompt.Id, clone.Id);
+        Assert.Equal(prompt.Name, clone.Name);
+        Assert.Equal(prompt.Hotkey, clone.Hotkey);
+        Assert.Equal(prompt.Prompt, clone.Prompt);
+        Assert.Equal(prompt.Prefill, clone.Prefill);
+        Assert.Equal(prompt.Activation, clone.Activation);
+    }
 
-        Assert.IsType(expectedType, client);
+    [Fact]
+    public void EnsureDefaults_PopulatesPromptShortcuts()
+    {
+        var config = new AppConfiguration();
+        config.EnsureDefaults();
+
+        Assert.NotEmpty(config.PromptShortcuts);
+        Assert.Contains(config.PromptShortcuts, p => p.Activation == PromptActivationMode.CaptureScreen);
+        Assert.Contains(config.PromptShortcuts, p => p.Activation == PromptActivationMode.ForegroundSelection);
     }
 }

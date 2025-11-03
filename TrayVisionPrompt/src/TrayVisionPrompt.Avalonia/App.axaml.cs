@@ -18,7 +18,8 @@ public partial class App : global::Avalonia.Application
     private WinHotkeyRegistrar? _hotkey;
     private Window? _hiddenWindow;
     private readonly ConfigurationStore _store = new();
-    private readonly ForegroundTextService _textService = new();
+    private ClipboardLogService? _clipboardLog;
+    private ForegroundTextService? _textService;
     private LocalApiServer? _api;
 
     public override void Initialize()
@@ -43,6 +44,8 @@ public partial class App : global::Avalonia.Application
             _hiddenWindow = hidden;
 
             _store.Load();
+            _clipboardLog = new ClipboardLogService(_store);
+            _textService = new ForegroundTextService(_clipboardLog);
             hidden.Icon = IconProvider.LoadWindowIcon(_store.Current.IconAsset);
 
             ConfigurationStore.ConfigurationChanged += OnConfigurationChanged;
@@ -166,14 +169,14 @@ public partial class App : global::Avalonia.Application
 
     private async System.Threading.Tasks.Task RunForegroundPromptAsync(PromptShortcutConfiguration shortcut)
     {
-        if (await _textService.IsRocketChatForegroundAsync())
+        if (await _textService!.IsRocketChatForegroundAsync())
         {
             await RunClipboardPromptAsync(shortcut, showResponseDialog: false);
             return;
         }
 
         // Capture on a background STA first to avoid stealing focus from the target app
-        var capture = await _textService.CaptureAsync();
+        var capture = await _textService!.CaptureAsync();
         if (string.IsNullOrWhiteSpace(capture.Text))
         {
             _tray?.ClearStatus();
@@ -202,11 +205,11 @@ public partial class App : global::Avalonia.Application
 
                 if (capture.HasSelection)
                 {
-                    await _textService.ReplaceSelectionAsync(capture.WindowHandle, response);
+                    await _textService!.ReplaceSelectionAsync(capture.WindowHandle, response);
                 }
                 else
                 {
-                    await _textService.SetClipboardTextAsync(response);
+                    await _textService!.SetClipboardTextAsync(response);
                 }
             }
             catch (Exception ex)
@@ -248,7 +251,7 @@ public partial class App : global::Avalonia.Application
                     return;
                 }
 
-                await _textService.SetClipboardTextAsync(response);
+                await _textService!.SetClipboardTextAsync(response);
                 var dlg = new ResponseDialog { ResponseText = response };
                 await dlg.ShowDialog(owner);
             }
@@ -265,7 +268,11 @@ public partial class App : global::Avalonia.Application
 
     private async System.Threading.Tasks.Task RunClipboardPromptAsync(PromptShortcutConfiguration shortcut, bool showResponseDialog)
     {
-        var clipboardText = await _textService.GetClipboardTextAsync();
+        _clipboardLog?.Log($"Clipboard prompt requested: {shortcut.Name} ({shortcut.Activation})");
+        var clipboardText = await _textService!.GetClipboardTextAsync();
+        _clipboardLog?.Log(string.IsNullOrEmpty(clipboardText)
+            ? "Clipboard read returned empty text"
+            : $"Clipboard read returned {clipboardText.Length} characters");
         if (string.IsNullOrWhiteSpace(clipboardText))
         {
             _tray?.ClearStatus();
@@ -292,7 +299,8 @@ public partial class App : global::Avalonia.Application
                     return;
                 }
 
-                await _textService.SetClipboardTextAsync(response);
+                await _textService!.SetClipboardTextAsync(response);
+                _clipboardLog?.Log($"Clipboard response written with {response.Length} characters");
                 if (showResponseDialog)
                 {
                     var dlg = new ResponseDialog { ResponseText = response };

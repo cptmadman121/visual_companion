@@ -28,6 +28,9 @@
             <CheckBox Content="OCR Fallback" IsChecked="{Binding UseOcrFallback, Mode=TwoWay}" />
             <TextBlock Classes="caption" Text="Proxy"/>
             <TextBox Text="{Binding Proxy, Mode=TwoWay}"/>
+            <CheckBox Content="Enable clipboard debug logging" IsChecked="{Binding EnableClipboardLogging, Mode=TwoWay}" />
+            <TextBlock Classes="caption" Text="Clipboard log file"/>
+            <TextBox Text="{Binding ClipboardLogPath}" IsReadOnly="True"/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

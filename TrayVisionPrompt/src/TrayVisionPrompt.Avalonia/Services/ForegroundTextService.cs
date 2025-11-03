@@ -9,14 +9,21 @@ namespace TrayVisionPrompt.Avalonia.Services;
 
 public sealed class ForegroundTextService
 {
+    private readonly ClipboardLogService? _log;
+
+    public ForegroundTextService(ClipboardLogService? logService = null)
+    {
+        _log = logService;
+    }
+
     public async Task<TextCaptureResult> CaptureAsync(CancellationToken cancellationToken = default)
     {
-        return await RunStaAsync(() => CaptureInternal(cancellationToken));
+        return await RunStaAsync(() => CaptureInternal(cancellationToken, _log));
     }
 
     public async Task ReplaceSelectionAsync(IntPtr windowHandle, string replacement, CancellationToken cancellationToken = default)
     {
-        await RunStaAsync(() => ReplaceSelectionInternal(windowHandle, replacement), cancellationToken);
+        await RunStaAsync(() => ReplaceSelectionInternal(windowHandle, replacement, _log), cancellationToken);
     }
 
     public async Task SetClipboardTextAsync(string text, CancellationToken cancellationToken = default)
@@ -25,11 +32,12 @@ public sealed class ForegroundTextService
         {
             try
             {
+                _log?.Log($"SetClipboardTextAsync: writing {text?.Length ?? 0} characters");
                 Clipboard.SetText(NormalizeNewlinesToWindows(text));
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore clipboard failures
+                _log?.Log($"SetClipboardTextAsync failed: {ex.Message}");
             }
         }, cancellationToken);
     }
@@ -40,10 +48,16 @@ public sealed class ForegroundTextService
         {
             try
             {
-                return Clipboard.ContainsText() ? Clipboard.GetText() : null;
+                var hasText = Clipboard.ContainsText();
+                var text = hasText ? Clipboard.GetText() : null;
+                _log?.Log(hasText
+                    ? $"GetClipboardTextAsync: retrieved {text?.Length ?? 0} characters"
+                    : "GetClipboardTextAsync: clipboard does not contain text");
+                return text;
             }
-            catch
+            catch (Exception ex)
             {
+                _log?.Log($"GetClipboardTextAsync failed: {ex.Message}");
                 return null;
             }
         });
@@ -54,18 +68,22 @@ public sealed class ForegroundTextService
         return await RunStaAsync(() =>
         {
             var hwnd = GetForegroundWindow();
-            return IsRocketChatWindow(hwnd);
+            var isRocket = IsRocketChatWindow(hwnd);
+            _log?.Log($"IsRocketChatForegroundAsync: window=0x{hwnd.ToInt64():X} rocketChat={isRocket}");
+            return isRocket;
         });
     }
 
-    private static TextCaptureResult CaptureInternal(CancellationToken cancellationToken)
+    private static TextCaptureResult CaptureInternal(CancellationToken cancellationToken, ClipboardLogService? log)
     {
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero)
         {
+            log?.Log("CaptureInternal: no foreground window");
             return TextCaptureResult.Empty;
         }
 
+        log?.Log($"CaptureInternal: starting for window 0x{foreground.ToInt64():X}");
         IDataObject? originalData = null;
         try
         {
@@ -74,6 +92,7 @@ public sealed class ForegroundTextService
         catch
         {
             // unable to read clipboard; continue without original data
+            log?.Log("CaptureInternal: unable to read original clipboard");
         }
 
         var originalText = TryGetText(originalData);
@@ -82,9 +101,11 @@ public sealed class ForegroundTextService
         try
         {
             Clipboard.SetDataObject(sentinel, true);
+            log?.Log("CaptureInternal: sentinel placed on clipboard");
         }
         catch
         {
+            log?.Log("CaptureInternal: failed to set sentinel");
             return TextCaptureResult.Empty;
         }
         // Attempt a direct copy on the focused control first; then keep nudging with Ctrl+C
@@ -107,6 +128,7 @@ public sealed class ForegroundTextService
                 if (!string.IsNullOrEmpty(maybe) && !string.Equals(maybe, sentinel, StringComparison.Ordinal))
                 {
                     capturedText = maybe;
+                    log?.Log($"CaptureInternal: captured {capturedText.Length} characters after {Environment.TickCount64 - start} ms");
                     break;
                 }
             }
@@ -127,7 +149,7 @@ public sealed class ForegroundTextService
             Thread.Sleep(30);
         }
 
-        RestoreClipboard(originalData);
+        RestoreClipboard(originalData, log);
 
         if (!string.IsNullOrWhiteSpace(capturedText))
         {
@@ -136,16 +158,19 @@ public sealed class ForegroundTextService
 
         if (!string.IsNullOrWhiteSpace(originalText))
         {
+            log?.Log("CaptureInternal: falling back to original clipboard text");
             return new TextCaptureResult(false, originalText!, originalText, foreground);
         }
 
+        log?.Log("CaptureInternal: no text captured");
         return TextCaptureResult.Empty;
     }
 
-    private static void ReplaceSelectionInternal(IntPtr windowHandle, string replacement)
+    private static void ReplaceSelectionInternal(IntPtr windowHandle, string replacement, ClipboardLogService? log)
     {
         if (string.IsNullOrEmpty(replacement) || windowHandle == IntPtr.Zero)
         {
+            log?.Log("ReplaceSelectionInternal: nothing to replace or invalid window");
             return;
         }
 
@@ -157,14 +182,17 @@ public sealed class ForegroundTextService
         catch
         {
             // ignore clipboard retrieval errors
+            log?.Log("ReplaceSelectionInternal: unable to read original clipboard");
         }
 
         try
         {
             Clipboard.SetText(NormalizeNewlinesToWindows(replacement));
+            log?.Log($"ReplaceSelectionInternal: placed {replacement.Length} characters on clipboard");
         }
         catch
         {
+            log?.Log("ReplaceSelectionInternal: failed to set replacement text");
             return;
         }
 
@@ -187,7 +215,7 @@ public sealed class ForegroundTextService
         var pasteDelay = isChromiumLike ? 2000 : 900;
         Thread.Sleep(pasteDelay);
 
-        RestoreClipboard(originalData);
+        RestoreClipboard(originalData, log);
     }
 
     private static string NormalizeNewlinesToWindows(string text)
@@ -448,17 +476,19 @@ public sealed class ForegroundTextService
         }
     }
 
-    private static void RestoreClipboard(IDataObject? data)
+    private static void RestoreClipboard(IDataObject? data, ClipboardLogService? log)
     {
         if (data == null)
         {
             try
             {
                 Clipboard.Clear();
+                log?.Log("RestoreClipboard: cleared clipboard (no original data)");
             }
             catch
             {
                 // ignore
+                log?.Log("RestoreClipboard: failed to clear clipboard");
             }
             return;
         }
@@ -466,10 +496,12 @@ public sealed class ForegroundTextService
         try
         {
             Clipboard.SetDataObject(data, true);
+            log?.Log("RestoreClipboard: restored previous clipboard data");
         }
         catch
         {
             // ignore clipboard restore issues
+            log?.Log("RestoreClipboard: failed to restore clipboard data");
         }
     }
 
