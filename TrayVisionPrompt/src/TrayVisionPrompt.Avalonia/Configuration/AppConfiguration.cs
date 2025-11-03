@@ -58,6 +58,9 @@ public class AppConfiguration
     [JsonPropertyName("logLevel")]
     public string LogLevel { get; set; } = "Info";
 
+    [JsonPropertyName("enableClipboardLogging")]
+    public bool EnableClipboardLogging { get; set; }
+
     // Prompt customization
     [JsonPropertyName("captureInstruction")]
     public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";

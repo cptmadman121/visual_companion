@@ -9,6 +9,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\TrayVisionPrompt\TrayVisionPrompt.csproj" />
+    <ProjectReference Include="..\..\src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj" />
   </ItemGroup>
 </Project>
