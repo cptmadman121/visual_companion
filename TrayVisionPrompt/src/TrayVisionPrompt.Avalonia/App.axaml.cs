@@ -54,9 +54,17 @@ public partial class App : global::Avalonia.Application
             _tray.Initialize();
             _tray.OpenRequested += (_, _) => ShowMainWindow();
             _tray.SettingsRequested += (_, _) => ShowSettings();
-            _tray.TestRequested += async (_, _) => await TestBackendAsync();
+            _tray.TestRequested += async (_, _) =>
+            {
+                _tray?.ShowPending();
+                await TestBackendAsync();
+            };
             _tray.ExitRequested += (_, _) => { try { _tray?.Dispose(); } catch { } desktop.Shutdown(); };
-            _tray.PromptRequested += async (_, shortcut) => await ExecutePromptAsync(shortcut, useClipboardFallback: true);
+            _tray.PromptRequested += async (_, shortcut) =>
+            {
+                _tray?.ShowPending();
+                await ExecutePromptAsync(shortcut, useClipboardFallback: true);
+            };
             _tray.UpdatePrompts(_store.Current.PromptShortcuts);
 
             _hotkey = new WinHotkeyRegistrar();
@@ -101,8 +109,14 @@ public partial class App : global::Avalonia.Application
                 await ask.ShowDialog(GetOwnerWindow());
                 if (!ask.Confirmed) { _tray?.ClearStatus(); return; }
 
-                var resp = new ResponseDialog { ResponseText = "Analyzing selection… contacting backend…" };
-                _ = resp.ShowDialog(GetOwnerWindow());
+                _tray?.ShowPending();
+                ResponseDialog? resp = null;
+                var wantsDialog = shortcut?.ShowResponseDialog ?? true;
+                if (wantsDialog)
+                {
+                    resp = new ResponseDialog { ResponseText = "Analyzing selection… contacting backend…" };
+                    _ = resp.ShowDialog(GetOwnerWindow());
+                }
 
                 try
                 {
@@ -118,11 +132,36 @@ public partial class App : global::Avalonia.Application
                     var sys = SystemPromptBuilder.BuildForInstruction(ask.Instruction, null, _store.Current.Language);
                     var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: sys);
                     text = TextUtilities.TrimTrailingNewlines(text);
-                    resp.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        if (resp is not null)
+                        {
+                            resp.ResponseText = "(empty response)";
+                        }
+                        else
+                        {
+                            await ShowMessageAsync("(empty response)");
+                        }
+                    }
+                    else if (resp is not null)
+                    {
+                        resp.ResponseText = text;
+                    }
+                    else
+                    {
+                        await _textService!.SetClipboardTextAsync(text);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    resp.ResponseText = $"Error: {ex.Message}";
+                    if (resp is not null)
+                    {
+                        resp.ResponseText = $"Error: {ex.Message}";
+                    }
+                    else
+                    {
+                        await ShowMessageAsync($"Error: {ex.Message}");
+                    }
                 }
                 finally
                 {
@@ -147,7 +186,7 @@ public partial class App : global::Avalonia.Application
             case PromptActivationMode.ForegroundSelection:
                 if (useClipboardFallback)
                 {
-                    await RunClipboardPromptAsync(shortcut, showResponseDialog: true);
+                    await RunClipboardPromptAsync(shortcut, showResponseDialog: shortcut.ShowResponseDialog);
                 }
                 else
                 {
@@ -157,7 +196,7 @@ public partial class App : global::Avalonia.Application
             case PromptActivationMode.TextDialog:
                 if (useClipboardFallback)
                 {
-                    await RunClipboardPromptAsync(shortcut, showResponseDialog: true);
+                    await RunClipboardPromptAsync(shortcut, showResponseDialog: shortcut.ShowResponseDialog);
                 }
                 else
                 {
@@ -171,7 +210,7 @@ public partial class App : global::Avalonia.Application
     {
         if (await _textService!.IsRocketChatForegroundAsync())
         {
-            await RunClipboardPromptAsync(shortcut, showResponseDialog: false);
+            await RunClipboardPromptAsync(shortcut, showResponseDialog: shortcut.ShowResponseDialog);
             return;
         }
 
@@ -203,13 +242,15 @@ public partial class App : global::Avalonia.Application
                     return;
                 }
 
+                var shouldCopyToClipboard = !shortcut.ShowResponseDialog || !capture.HasSelection;
+                if (shouldCopyToClipboard)
+                {
+                    await _textService!.SetClipboardTextAsync(response);
+                }
+
                 if (capture.HasSelection)
                 {
                     await _textService!.ReplaceSelectionAsync(capture.WindowHandle, response);
-                }
-                else
-                {
-                    await _textService!.SetClipboardTextAsync(response);
                 }
             }
             catch (Exception ex)
@@ -240,6 +281,7 @@ public partial class App : global::Avalonia.Application
                 return;
             }
 
+            _tray?.ShowPending();
             try
             {
                 _tray?.StartBusy();
@@ -252,8 +294,11 @@ public partial class App : global::Avalonia.Application
                 }
 
                 await _textService!.SetClipboardTextAsync(response);
-                var dlg = new ResponseDialog { ResponseText = response };
-                await dlg.ShowDialog(owner);
+                if (shortcut.ShowResponseDialog)
+                {
+                    var dlg = new ResponseDialog { ResponseText = response };
+                    await dlg.ShowDialog(owner);
+                }
             }
             catch (Exception ex)
             {
@@ -280,6 +325,7 @@ public partial class App : global::Avalonia.Application
             return;
         }
 
+        var shouldShowDialog = showResponseDialog && shortcut.ShowResponseDialog;
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
             try
@@ -301,7 +347,7 @@ public partial class App : global::Avalonia.Application
 
                 await _textService!.SetClipboardTextAsync(response);
                 _clipboardLog?.Log($"Clipboard response written with {response.Length} characters");
-                if (showResponseDialog)
+                if (shouldShowDialog)
                 {
                     var dlg = new ResponseDialog { ResponseText = response };
                     await dlg.ShowDialog(GetOwnerWindow());
@@ -392,6 +438,7 @@ public partial class App : global::Avalonia.Application
         {
             var dlg = new ResponseDialog { ResponseText = "Testing backend…" };
             _ = dlg.ShowDialog(GetOwnerWindow());
+            _tray?.ShowPending();
             try
             {
                 using var llm = new LlmService();
