@@ -9,7 +9,7 @@ namespace TrayVisionPrompt.Avalonia.Views;
 
 public partial class ResponseDialog : Window
 {
-    private TextBlock? _responseTextBlock;
+    private SelectableTextBlock? _responseTextBlock;
     public string ResponseText
     {
         get => _responseTextBlock?.Text ?? string.Empty;
@@ -21,7 +21,7 @@ public partial class ResponseDialog : Window
         InitializeComponent();
         var store = new ConfigurationStore();
         Icon = IconProvider.LoadWindowIcon(store.Current.IconAsset);
-        _responseTextBlock = this.FindControl<TextBlock>("ResponseTextBlock");
+        _responseTextBlock = this.FindControl<SelectableTextBlock>("ResponseTextBlock");
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
