@@ -31,6 +31,9 @@
             <CheckBox Content="Enable clipboard debug logging" IsChecked="{Binding EnableClipboardLogging, Mode=TwoWay}" />
             <TextBlock Classes="caption" Text="Clipboard log file"/>
             <TextBox Text="{Binding ClipboardLogPath}" IsReadOnly="True"/>
+            <CheckBox Content="Keep conversation transcripts" IsChecked="{Binding KeepTranscripts, Mode=TwoWay}" />
+            <TextBlock Classes="caption" Text="Transcript folder"/>
+            <TextBox Text="{Binding TranscriptsPath}" IsReadOnly="True"/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -58,6 +61,8 @@
 
             <TextBlock Classes="caption" Text="Activation"/>
             <ComboBox ItemsSource="{Binding ActivationModes}" SelectedItem="{Binding SelectedPrompt.Activation, Mode=TwoWay}"/>
+
+            <CheckBox Content="Show popup dialog for results" IsChecked="{Binding SelectedPrompt.ShowResponseDialog, Mode=TwoWay}"/>
 
             <TextBlock Classes="caption" Text="Prompt"/>
             <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="120" Text="{Binding SelectedPrompt.Prompt, Mode=TwoWay}"/>

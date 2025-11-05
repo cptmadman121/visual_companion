@@ -13,6 +13,7 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
     private string _prompt = string.Empty;
     private string? _prefill = string.Empty;
     private PromptActivationMode _activation = PromptActivationMode.ForegroundSelection;
+    private bool _showResponseDialog = true;
 
     [JsonPropertyName("id")]
     public string Id
@@ -57,6 +58,13 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
         set => SetField(ref _activation, value);
     }
 
+    [JsonPropertyName("showResponseDialog")]
+    public bool ShowResponseDialog
+    {
+        get => _showResponseDialog;
+        set => SetField(ref _showResponseDialog, value);
+    }
+
     public static PromptShortcutConfiguration CreateCapture(string name, string hotkey, string prompt)
     {
         return new PromptShortcutConfiguration
@@ -64,7 +72,8 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
             Name = name,
             Hotkey = hotkey,
             Prompt = prompt,
-            Activation = PromptActivationMode.CaptureScreen
+            Activation = PromptActivationMode.CaptureScreen,
+            ShowResponseDialog = true
         };
     }
 
@@ -75,7 +84,8 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
             Name = name,
             Hotkey = hotkey,
             Prompt = prompt,
-            Activation = PromptActivationMode.ForegroundSelection
+            Activation = PromptActivationMode.ForegroundSelection,
+            ShowResponseDialog = false
         };
     }
 
@@ -87,7 +97,8 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
             Hotkey = hotkey,
             Prompt = prompt,
             Prefill = prefill,
-            Activation = PromptActivationMode.TextDialog
+            Activation = PromptActivationMode.TextDialog,
+            ShowResponseDialog = true
         };
     }
 
@@ -100,7 +111,8 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
             Hotkey = Hotkey,
             Prompt = Prompt,
             Prefill = Prefill,
-            Activation = Activation
+            Activation = Activation,
+            ShowResponseDialog = ShowResponseDialog
         };
     }
 

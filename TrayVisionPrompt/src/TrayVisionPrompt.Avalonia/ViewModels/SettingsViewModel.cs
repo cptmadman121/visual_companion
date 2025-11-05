@@ -26,6 +26,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     public string? Proxy { get; set; }
     public string Language { get; set; } = "English";
     public bool EnableClipboardLogging { get; set; }
+    public bool KeepTranscripts { get; set; }
     public IReadOnlyList<string> Languages { get; } = new[] { "English", "German" };
     public IReadOnlyList<string> Backends { get; } = new[] { "ollama", "vllm", "llamacpp" };
     public IReadOnlyList<PromptActivationMode> ActivationModes { get; } = Enum.GetValues<PromptActivationMode>();
@@ -33,6 +34,7 @@ public class SettingsViewModel : INotifyPropertyChanged
     public IconOption? SelectedIcon { get; set; }
 
     public string ClipboardLogPath { get; } = BuildClipboardLogPath();
+    public string TranscriptsPath { get; } = BuildTranscriptsPath();
 
     public ObservableCollection<PromptShortcutConfiguration> Prompts { get; } = new();
     private PromptShortcutConfiguration? _selectedPrompt;
@@ -85,6 +87,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         Proxy = c.Proxy;
         Language = string.IsNullOrWhiteSpace(c.Language) ? "English" : c.Language;
         EnableClipboardLogging = c.EnableClipboardLogging;
+        KeepTranscripts = c.KeepTranscripts;
         CaptureInstruction = string.IsNullOrWhiteSpace(c.CaptureInstruction) ? "Describe the selected region succinctly." : c.CaptureInstruction;
         Prompts.Clear();
         foreach (var prompt in c.PromptShortcuts)
@@ -118,6 +121,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         _store.Current.Proxy = Proxy;
         _store.Current.Language = Language;
         _store.Current.EnableClipboardLogging = EnableClipboardLogging;
+        _store.Current.KeepTranscripts = KeepTranscripts;
         _store.Current.CaptureInstruction = CaptureInstruction;
         _store.Current.PromptShortcuts = Prompts.Select(p => p.Clone()).ToList();
         _store.Current.IconAsset = SelectedIcon?.Key ?? string.Empty;
@@ -206,5 +210,12 @@ public class SettingsViewModel : INotifyPropertyChanged
         public string Label { get; }
 
         public override string ToString() => Label;
+    }
+
+    private static string BuildTranscriptsPath()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var folder = Path.Combine(appData, "deskLLM", "logs", "transcripts");
+        return folder;
     }
 }

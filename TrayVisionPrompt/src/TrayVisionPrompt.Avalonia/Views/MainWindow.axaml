@@ -17,8 +17,11 @@
     <vm:MainViewModel />
   </Design.DataContext>
 
-  <Border Classes="card" Margin="16">
-    <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
+  <ScrollViewer Margin="16"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+    <Border Classes="card">
+      <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*">
       <!-- Title Bar -->
       <Grid ColumnDefinitions="Auto,*,Auto" Height="48">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -33,36 +36,21 @@
       </Grid>
 
       <!-- Content -->
-      <Grid Grid.Row="1" ColumnDefinitions="2*,3*" RowDefinitions="Auto,*" Margin="0,8,0,8">
+      <Grid Grid.Row="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,*" Margin="0,8,0,8">
         <!-- Left Column: Prompt + Options -->
-        <StackPanel Spacing="12" Margin="8,0,8,0">
+        <StackPanel Spacing="12" Margin="8,0,8,0" Width="320">
           <TextBlock Classes="h1" Text="Ask anything"/>
           <Border Classes="card">
             <StackPanel Spacing="8">
               <TextBlock Classes="caption" Text="Prompt"/>
               <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="140" Watermark="Type your prompt..." Text="{Binding Prompt, Mode=TwoWay}"/>
 
-              <Expander Header="Options" IsExpanded="False">
-                <StackPanel Spacing="8">
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ComboBox Width="160" SelectedItem="{Binding Backend, Mode=TwoWay}">
-                      <ComboBoxItem>ollama</ComboBoxItem>
-                      <ComboBoxItem>vllm</ComboBoxItem>
-                      <ComboBoxItem>llamacpp</ComboBoxItem>
-                    </ComboBox>
-                    <TextBox Watermark="Model" Width="160" Text="{Binding Model, Mode=TwoWay}"/>
-                  </StackPanel>
-                  <TextBox Watermark="Endpoint" Text="{Binding Endpoint, Mode=TwoWay}"/>
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBox Watermark="Max Tokens" Width="120" Text="{Binding MaxTokens, Mode=TwoWay}"/>
-                    <TextBox Watermark="Temperature" Width="120" Text="{Binding Temperature, Mode=TwoWay}"/>
-                  </StackPanel>
-                  <StackPanel Orientation="Horizontal" Spacing="12">
-                    <CheckBox Content="Vision" IsChecked="{Binding UseVision, Mode=TwoWay}"/>
-                    <CheckBox Content="OCR Fallback" IsChecked="{Binding UseOcrFallback, Mode=TwoWay}"/>
-                  </StackPanel>
-                </StackPanel>
-              </Expander>
+              <TextBlock Classes="caption" Text="Model (Ollama)"/>
+              <ComboBox x:Name="ModelPicker"
+                        MinWidth="220"
+                        HorizontalAlignment="Stretch"
+                        SelectionChanged="OnModelPickerSelectionChanged"
+                        DropDownOpened="OnModelPickerDropDownOpened"/>
 
               <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Content="Capture" Click="OnCapture"/>
@@ -73,15 +61,25 @@
         </StackPanel>
 
         <!-- Right Column: Conversation -->
-        <Border Grid.Column="1" Classes="card">
+        <Border Grid.Column="1" Classes="card" Margin="0,0,8,0" ClipToBounds="True">
           <Grid RowDefinitions="Auto,*">
             <TextBlock Classes="h1" Margin="0,0,0,8" Text="Conversation"/>
-            <ScrollViewer Grid.Row="1">
-              <ItemsControl ItemsSource="{Binding Messages}">
+            <ScrollViewer x:Name="TranscriptViewer"
+                          Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          ClipToBounds="True">
+              <ItemsControl x:Name="MessagesView"
+                            ItemsSource="{Binding Messages}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Vertical"/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <Border Margin="0,8" Background="#16161D" CornerRadius="10" Padding="12">
-                      <TextBlock TextWrapping="Wrap" Text="{Binding}"/>
+                    <Border Margin="0,8" Background="#16161D" CornerRadius="10" Padding="12" HorizontalAlignment="Stretch">
+                      <TextBlock TextWrapping="Wrap" Text="{Binding}" HorizontalAlignment="Stretch"/>
                     </Border>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -95,8 +93,9 @@
       <Grid Grid.Row="2">
         <TextBlock Classes="caption" HorizontalAlignment="Right" Text="Press Ctrl+Shift+Space to open"/>
       </Grid>
-    </Grid>
-  </Border>
+      </Grid>
+    </Border>
+  </ScrollViewer>
 
   <!-- Simple, robust layout; column content stacks gracefully on narrow widths -->
 </Window>
