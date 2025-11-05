@@ -1,122 +1,151 @@
 # deskLLM
 
-deskLLM is a lightweight Windows tray companion that lets you capture a screen region with annotations or operate on the current text selection, send it to a local LLM backend (OpenAI-compatible), and view or apply the response.
+deskLLM is a lightweight Windows companion that combines a modern Avalonia desktop UI with a background tray workflow. Capture annotated screen regions or operate on text selections, send them to a local OpenAI-compatible LLM, and review, apply, or automate the response.
 
-It targets quick day-to-day workflows like proofreading and translating selected text in editors such as Notepad++, and visual questions on screenshots with LLMs that support vision.
+It targets fast everyday tasks—proofreading, translating, anonymising, answering visual questions—across editors like Notepad++, browsers, and Electron apps.
 
 **Highlights**
-- System tray app with a context menu: prompts, Settings, Test Backend, Copy Last Response, Open Logs, Exit.
-- Global hotkeys for each prompt; per-prompt activation: Capture Screen, Foreground Selection, or Text Dialog.
-- Annotation overlay for screen capture (select area, draw/undo, reset, confirm/cancel).
-- OpenAI-compatible clients: Ollama, vLLM, llama.cpp; optional OCR fallback when vision is disabled.
-- Instant feedback on hotkeys: yellow dot appears immediately when a hotkey is pressed; turns green while the request is sent to the LLM.
-- Tray menu prompts fall back to clipboard input/output, so Electron apps and browsers work reliably.
-- Configuration and logs stored under `%APPDATA%\deskLLM`.
+- Fluent-style Avalonia front-end with conversation timeline, quick actions, and a compact instruction dialog for capture workflows.
+- Animated tray icon with global hotkeys for every prompt; activation modes cover Capture Screen, Foreground Selection, and Text Dialog and can auto-apply results without showing a dialog.
+- Prompt shortcuts support custom names, hotkeys, prompt text, optional prefill, and per-prompt response dialogs for inline automation flows.
+- OpenAI-compatible backends (Ollama, vLLM, llama.cpp) with endpoint normalization, proxy support, optional vision/OCR fallback, automatic language detection, and long-selection chunking.
+- Local HTTP API (`http://127.0.0.1:27124/v1/process`) for integrations, including bundled Chrome/Firefox context menu extensions.
+- Configurable experience stored under `%APPDATA%\deskLLM`: choose icon assets, enable clipboard logging, review transcripts, and open logs straight from the tray.
 
 **What’s New**
-- Custom prompt shortcuts: create your own hotkey + prompt pairs in Settings.
-- Smooth Notepad++ flow: select text, press a hotkey, get a response, and replace the selection.
+- Avalonia UI replaces the legacy WPF host for day-to-day use, delivering a Fluent dark theme, card layout, and conversation history.
+- Local API server powers browser extensions and other clients; proofread/translate is one POST away.
+- Chrome and Firefox extensions ship in `browser-extensions/` and hook into the local API for right-click proofreading/translation.
+- Prompt shortcuts gained `showResponseDialog`, `prefill`, and a new default “Anonymize Selection” preset; Settings now edits every aspect including icon choice and clipboard logging.
+- Improved integrations: Rocket.Chat clipboard-first flow, smarter text chunking, sanitised translation responses, and adaptive timeouts based on request size.
 
 **Repository Layout**
 - `TrayVisionPrompt.sln`
-- `src/TrayVisionPrompt` (WPF core, workflows, services)
-- `src/TrayVisionPrompt.Avalonia` (packaged UI host for single-file distribution)
+- `src/TrayVisionPrompt` (core services shared with the tray workflow)
+- `src/TrayVisionPrompt.Avalonia` (Avalonia desktop front-end and Windows tray host)
 - `tests/TrayVisionPrompt.Tests` (xUnit)
+- `browser-extensions/` (Chrome and Firefox MV3 extensions)
 - `tools/` (build/package scripts)
 - `Installer.md`, `README.md`
 
 **Requirements**
 - Windows 10/11 x64
-- .NET 8 SDK (for building) or .NET Desktop Runtime 8 (for running)
-- Local LLM server compatible with OpenAI Chat Completions API
+- .NET 8 SDK to build (Desktop Runtime 8.0.x to run the packaged app)
+- Local LLM server compatible with the OpenAI Chat Completions API
 
 **Build and Test**
-- Release build + publish to `dist`: `tools\build.cmd`
-- Debug build only: `tools\build.cmd -Debug`
+- Release build + self-contained publish to `dist`: `tools\build.cmd`
+- Debug build only (skip publish): `tools\build.cmd -Debug`
 - Run tests: `dotnet test TrayVisionPrompt.sln`
+- Quick run of the Avalonia host: `.\run-avalonia.ps1` or `dotnet run --project src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj`
 
-PowerShell execution policy locked down? Use the `.cmd` scripts or the raw `dotnet` commands:
+PowerShell execution policy locked down? Use the `.cmd` scripts or raw `dotnet` commands:
 - `dotnet restore TrayVisionPrompt.sln`
 - `dotnet build TrayVisionPrompt.sln -c Release`
 - `dotnet publish src\TrayVisionPrompt.Avalonia\TrayVisionPrompt.Avalonia.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist`
 
 **Install**
-- See `Installer.md` for packaging, distribution, and update notes.
+- See `Installer.md` for packaging, distribution, and update notes. The Release build drops a single-file `deskLLM.exe` into `dist`.
 
 **Configuration**
 - First run creates `%APPDATA%\deskLLM\config.json`.
-- Key options: backend (`ollama`, `vllm`, `llamacpp`), `endpoint`, `model`, timeouts, `useVision`, `useOcrFallback`, and `promptShortcuts`.
+- Core options: backend (`ollama`, `vllm`, `llamacpp`), `endpoint`, `model`, timeouts, `useVision`, `useOcrFallback`, `language`, `proxy`, `iconAsset`, `enableClipboardLogging`, `keepTranscripts`, and `promptShortcuts`.
+- `promptShortcuts` entries now support `prefill` (for TextDialog prompts) and `showResponseDialog` (skip the dialog when replacing text inline).
 - Example (abbreviated):
-```
+```json
 {
   "backend": "ollama",
   "endpoint": "http://127.0.0.1:11434/v1/chat/completions",
   "model": "llava:latest",
   "useVision": true,
   "useOcrFallback": true,
+  "language": "English",
+  "iconAsset": "ollama-companion",
+  "enableClipboardLogging": false,
+  "keepTranscripts": true,
   "promptShortcuts": [
-    { "id": "...", "name": "Capture Screen", "hotkey": "Ctrl+Shift+S", "prompt": "Describe the selected region succinctly.", "activation": "CaptureScreen" },
-    { "id": "...", "name": "Proofread Selection", "hotkey": "Ctrl+Shift+P", "prompt": "Proofread and improve grammar...", "activation": "ForegroundSelection" },
-    { "id": "...", "name": "Translate Selection", "hotkey": "Ctrl+Shift+T", "prompt": "If the text is not German...", "activation": "ForegroundSelection" }
+    {
+      "id": "...",
+      "name": "Capture Screen",
+      "hotkey": "Ctrl+Shift+S",
+      "prompt": "Describe the selected region succinctly.",
+      "activation": "CaptureScreen",
+      "showResponseDialog": true
+    },
+    {
+      "id": "...",
+      "name": "Proofread Selection",
+      "hotkey": "Ctrl+Shift+P",
+      "prompt": "Proofread and improve grammar...",
+      "activation": "ForegroundSelection",
+      "showResponseDialog": false
+    },
+    {
+      "id": "...",
+      "name": "Anonymize Selection",
+      "hotkey": "Ctrl+Shift+A",
+      "prompt": "Anonymize the provided text...",
+      "activation": "ForegroundSelection",
+      "showResponseDialog": false
+    }
   ]
 }
 ```
 
-**Usage in Notepad++**
-- Select text in Notepad++ (or most editors/apps that support Ctrl+C/Ctrl+V).
-- Press the configured hotkey, e.g. `Ctrl+Shift+P` for “Proofread Selection”.
-- The app captures the selection from the foreground window and sends it with your prompt.
-- The response dialog appears; the selection is replaced automatically when possible. If replacement isn’t possible, the result is copied to the clipboard.
+**Avalonia Desktop + Tray**
+- Launch the Avalonia host to access the conversation view, quick actions, and Settings window.
+- The tray icon animates (yellow pending, green pulse while busy) and exposes Open, per-prompt entries, Settings, Test Backend, Open Logs, and Exit.
+- Settings lets you adjust prompts, select icon assets, toggle OCR fallback, choose clipboard logging, change languages, and configure proxies/endpoints.
 
-Tips
-- Works best when a selection exists; if none is available, the original clipboard text may be used.
-- The service avoids resizing Notepad++ when bringing it to foreground.
+**Usage in Notepad++ and Editors**
+- Select text, press a text-selection hotkey (Proofread/Translate/Anonymize). The app captures the selection, applies your prompt, and replaces the selection automatically if `showResponseDialog` is `false`. Otherwise it opens the response dialog first.
+- If replacement fails in a specific editor, the fallback copies the answer to the clipboard without losing the prior clipboard contents.
+- Long selections are chunked to respect the configured `maxTokens`. Responses are merged back before replacement.
+- For clipboard-driven flows (Rocket.Chat, Chromium apps), the app reuses the existing clipboard text and drops the reply back onto the clipboard, so `Ctrl+V` posts the answer instantly.
 
 **Image Capture and Annotation**
-- Trigger a “Capture Screen” prompt via tray menu or hotkey (e.g. `Ctrl+Shift+S`).
-- An overlay appears:
-  - Select a rectangle to capture a region, or leave empty to capture the full virtual screen.
-  - Switch to draw mode to annotate; undo by clearing strokes (Reset).
-  - Confirm to open the instruction dialog with a live preview; choose or edit the prompt.
-- If `useVision` is false but `useOcrFallback` is true, extracted OCR text is sent instead of the image.
+- Trigger a Capture Screen prompt via tray menu or a hotkey (e.g. `Ctrl+Shift+S`).
+- The overlay supports rectangle selection, drawing/undo, reset, and cancel. Confirming opens the instruction dialog with a live preview and optional prompt tweaks.
+- When `useVision` is disabled but `useOcrFallback` is on, captured regions run through Windows OCR and the recognised text is sent instead of the image.
 
 **Add New Hotkey + Prompt Pairs**
-- Via Settings (tray icon → Settings):
-  - Add a new prompt, set a descriptive name, a global hotkey (e.g., `Ctrl+Alt+R`), an activation mode, and the prompt text.
+- Tray icon → Settings → Prompts:
+  - Add a prompt, choose name, global hotkey, activation mode, prompt text, optional prefill, and whether to show the response dialog.
   - Activation modes:
-    - `CaptureScreen` – shows the overlay, captures an image, and sends it.
-    - `ForegroundSelection` – captures the current selection from the active window and replaces it with the response.
-    - `TextDialog` – pops up a text input dialog; response is shown and copied.
-  - Save to persist and auto-register hotkeys.
-- Or edit `%APPDATA%\deskLLM\config.json` directly under `promptShortcuts`.
+    - `CaptureScreen` – capture annotated screenshots (always shows a dialog).
+    - `ForegroundSelection` – capture the active selection and optionally auto-apply the response.
+    - `TextDialog` – open a text input dialog with optional prefill.
+  - Save updates the config and re-registers hotkeys on the fly.
+- You can also edit `%APPDATA%\deskLLM\config.json` directly under `promptShortcuts`.
+
+**Browser Extensions & Local API**
+- The Avalonia app hosts `http://127.0.0.1:27124/v1/process`. POST `{ "action": "proofread" | "translate", "text": "..." }` or supply `extraPrompt` for custom behaviour.
+- Chrome/Edge: load `browser-extensions/chrome` unpacked; Firefox: load `browser-extensions/firefox` as a temporary add-on. Each adds “Proofread with deskLLM” and “Translate with deskLLM” context menu items.
+- If the API fails to start, add a URL ACL from an elevated terminal: `netsh http add urlacl url=http://127.0.0.1:27124/ user=Everyone`.
+- Extensions replace the selection inline; on failure they fall back to inserting via the DOM.
 
 **Backend Support**
-- Uses an OpenAI-compatible Chat Completions endpoint; image content is sent as base64 when vision is enabled.
-- Clients: `OllamaClient`, `VllmClient`, `LlamaCppClient`.
-- Test your setup from the tray menu: “Test Backend”.
+- Works with OpenAI-compatible Chat Completions endpoints; images are sent as base64 when vision is enabled.
+- Clients cover Ollama, vLLM, and llama.cpp; use “Test Backend” from the tray to validate connectivity.
+- System prompts adapt to the detected language of your selection or instruction, so responses arrive in the expected language automatically.
 
 **Logging and Privacy**
-- Logs: `%APPDATA%\deskLLM\TrayVisionPrompt.log` (rolling).
-- No telemetry; requests go only to your configured endpoint.
-- Open the logs folder from the tray menu.
+- Rolling application logs: `%APPDATA%\deskLLM\TrayVisionPrompt.log`.
+- Optional clipboard log (Settings → Enable Clipboard Logging): `%APPDATA%\deskLLM\logs\clipboard.log`.
+- Conversation transcripts (`keepTranscripts` enabled): `%APPDATA%\deskLLM\logs\transcripts\session_*.txt`.
+- No telemetry; requests only hit your configured backend or the local API.
 
 **Troubleshooting**
-- If a hotkey fails to register, you’ll see a warning; adjust the hotkey to avoid conflicts.
-- Some apps restrict clipboard access; in that case, the app falls back to using the clipboard directly.
-- Very long selections are chunked automatically so they stay within Gemma 3 27B’s context window; each segment is processed in sequence and combined for the final output.
+- Hotkey conflicts show warnings in the app and tray notifications; adjust the shortcut or run both apps at the same privilege level.
+- If Rocket.Chat or another Chromium app does not react, enable `showResponseDialog` for that prompt, or trigger it from the tray menu as a fallback.
+- Keep `maxTokens` aligned with your model’s context window; deskLLM reserves instruction tokens automatically but respects your ceiling.
+- For API errors, check the clipboard log or TrayVisionPrompt.log and run “Test Backend” to confirm endpoint reachability.
 
 **Rocket.Chat Desktop (Chromium/Electron)**
-  - Foreground selection and replacement are optimized for Chromium/Electron apps (including Rocket.Chat) by trying alternative accelerators (Ctrl+Insert for copy, Shift+Insert for paste) and allowing slightly longer timing.
-  - New clipboard-first flow: if Rocket.Chat is focused when you press a hotkey, deskLLM reuses the current clipboard text, sends it to the LLM, and drops the answer back into the clipboard; just press `Ctrl+V` to send, no pop-up.
-  - If global hotkeys don't trigger while Rocket.Chat is focused:
-    - Change your hotkey combinations to avoid conflicts (e.g., avoid ones Rocket.Chat uses).
-    - Ensure deskLLM and Rocket.Chat run at the same privilege level (both non-admin). Mixed elevation can interfere with system-wide hotkeys.
-    - If problems persist, use the tray menu to trigger prompts as a workaround.
+- Optimised for Rocket.Chat and similar Electron apps: the service tries Ctrl+C, Ctrl+Insert, and Shift+Insert sequences to copy/paste reliably.
+- Clipboard-first flow: when Rocket.Chat is focused, deskLLM reuses the current clipboard, sends it to the LLM, and places the answer back on the clipboard—press `Ctrl+V` to send without a dialog.
+- If global hotkeys still do not trigger, adjust the combinations, ensure both apps run non-admin, or use the tray menu as a workaround.
 
 **License**
 - Internal/for local use. No telemetry. See repository policies if present.
-
-
-
-
 

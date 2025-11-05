@@ -26,18 +26,15 @@ public sealed class ForegroundTextService
         await RunStaAsync(() => ReplaceSelectionInternal(windowHandle, replacement, _log), cancellationToken);
     }
 
-    public async Task SetClipboardTextAsync(string text, CancellationToken cancellationToken = default)
+    public async Task SetClipboardTextAsync(string? text, CancellationToken cancellationToken = default)
     {
         await RunStaAsync(() =>
         {
-            try
+            var safeText = text ?? string.Empty;
+            _log?.Log($"SetClipboardTextAsync: writing {safeText.Length} characters");
+            if (!TrySetClipboard(() => Clipboard.SetText(NormalizeNewlinesToWindows(safeText)), _log, "SetClipboardTextAsync"))
             {
-                _log?.Log($"SetClipboardTextAsync: writing {text?.Length ?? 0} characters");
-                Clipboard.SetText(NormalizeNewlinesToWindows(text));
-            }
-            catch (Exception ex)
-            {
-                _log?.Log($"SetClipboardTextAsync failed: {ex.Message}");
+                _log?.Log("SetClipboardTextAsync: giving up after retries");
             }
         }, cancellationToken);
     }
@@ -98,16 +95,12 @@ public sealed class ForegroundTextService
         var originalText = TryGetText(originalData);
         var sentinel = Guid.NewGuid().ToString("N");
 
-        try
-        {
-            Clipboard.SetDataObject(sentinel, true);
-            log?.Log("CaptureInternal: sentinel placed on clipboard");
-        }
-        catch
+        if (!TrySetClipboard(() => Clipboard.SetDataObject(sentinel, true), log, "CaptureInternal: set sentinel"))
         {
             log?.Log("CaptureInternal: failed to set sentinel");
             return TextCaptureResult.Empty;
         }
+        log?.Log("CaptureInternal: sentinel placed on clipboard");
         // Attempt a direct copy on the focused control first; then keep nudging with Ctrl+C
         SendCopy(foreground);
 
@@ -185,16 +178,12 @@ public sealed class ForegroundTextService
             log?.Log("ReplaceSelectionInternal: unable to read original clipboard");
         }
 
-        try
-        {
-            Clipboard.SetText(NormalizeNewlinesToWindows(replacement));
-            log?.Log($"ReplaceSelectionInternal: placed {replacement.Length} characters on clipboard");
-        }
-        catch
+        if (!TrySetClipboard(() => Clipboard.SetText(NormalizeNewlinesToWindows(replacement)), log, "ReplaceSelectionInternal: set replacement text"))
         {
             log?.Log("ReplaceSelectionInternal: failed to set replacement text");
             return;
         }
+        log?.Log($"ReplaceSelectionInternal: placed {replacement.Length} characters on clipboard");
 
         BringToForeground(windowHandle);
         // Try direct paste first; then keyboard alternative if needed
@@ -480,29 +469,51 @@ public sealed class ForegroundTextService
     {
         if (data == null)
         {
-            try
+            if (TrySetClipboard(Clipboard.Clear, log, "RestoreClipboard: clear clipboard"))
             {
-                Clipboard.Clear();
                 log?.Log("RestoreClipboard: cleared clipboard (no original data)");
             }
-            catch
+            else
             {
-                // ignore
                 log?.Log("RestoreClipboard: failed to clear clipboard");
             }
             return;
         }
 
-        try
+        if (TrySetClipboard(() => Clipboard.SetDataObject(data, true), log, "RestoreClipboard: restore data"))
         {
-            Clipboard.SetDataObject(data, true);
             log?.Log("RestoreClipboard: restored previous clipboard data");
         }
-        catch
+        else
         {
-            // ignore clipboard restore issues
             log?.Log("RestoreClipboard: failed to restore clipboard data");
         }
+    }
+
+    private static bool TrySetClipboard(Action action, ClipboardLogService? log, string context, int attempts = 6, int delayMs = 80)
+    {
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                action();
+                if (attempt > 1)
+                {
+                    log?.Log($"{context}: succeeded on attempt {attempt}");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Log($"{context}: attempt {attempt} failed ({ex.Message})");
+                if (attempt < attempts)
+                {
+                    Thread.Sleep(delayMs);
+                }
+            }
+        }
+
+        return false;
     }
 
     private static bool IsRocketChatWindow(IntPtr hWnd)

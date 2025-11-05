@@ -61,6 +61,9 @@ public class AppConfiguration
     [JsonPropertyName("enableClipboardLogging")]
     public bool EnableClipboardLogging { get; set; }
 
+    [JsonPropertyName("keepTranscripts")]
+    public bool KeepTranscripts { get; set; }
+
     // Prompt customization
     [JsonPropertyName("captureInstruction")]
     public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";

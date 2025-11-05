@@ -1,22 +1,35 @@
 using System;
 using System.IO;
 using System.Text;
+using TrayVisionPrompt.Avalonia.Configuration;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
 public sealed class TranscriptService : IDisposable
 {
+    private readonly ConfigurationStore _store;
     private string? _currentPath;
     private StreamWriter? _writer;
 
     public string? CurrentFile => _currentPath;
 
+    public TranscriptService(ConfigurationStore store)
+    {
+        _store = store;
+        ConfigurationStore.ConfigurationChanged += OnConfigurationChanged;
+    }
+
     public void StartNewSession()
     {
         DisposeWriter();
 
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "TrayVisionPrompt", "Transcripts");
+        if (!_store.Current.KeepTranscripts)
+        {
+            _currentPath = null;
+            return;
+        }
+
+        var dir = ResolveTranscriptDirectory();
         Directory.CreateDirectory(dir);
 
         var name = DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -32,8 +45,17 @@ public sealed class TranscriptService : IDisposable
 
     public void Append(string line)
     {
-        if (_writer == null) StartNewSession();
-        _writer!.WriteLine(line);
+        if (!_store.Current.KeepTranscripts)
+        {
+            return;
+        }
+
+        if (_writer == null)
+        {
+            StartNewSession();
+        }
+
+        _writer?.WriteLine(line);
     }
 
     private void DisposeWriter()
@@ -49,6 +71,21 @@ public sealed class TranscriptService : IDisposable
     public void Dispose()
     {
         DisposeWriter();
+        ConfigurationStore.ConfigurationChanged -= OnConfigurationChanged;
+    }
+
+    private static string ResolveTranscriptDirectory()
+    {
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        return Path.Combine(appData, "deskLLM", "logs", "transcripts");
+    }
+
+    private void OnConfigurationChanged(object? sender, EventArgs e)
+    {
+        if (!_store.Current.KeepTranscripts)
+        {
+            DisposeWriter();
+            _currentPath = null;
+        }
     }
 }
-

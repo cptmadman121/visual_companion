@@ -114,7 +114,7 @@ public partial class App : global::Avalonia.Application
                 var wantsDialog = shortcut?.ShowResponseDialog ?? true;
                 if (wantsDialog)
                 {
-                    resp = new ResponseDialog { ResponseText = "Analyzing selection… contacting backend…" };
+                    resp = new ResponseDialog { ResponseText = "Analyzing selection... contacting backend..." };
                     _ = resp.ShowDialog(GetOwnerWindow());
                 }
 
