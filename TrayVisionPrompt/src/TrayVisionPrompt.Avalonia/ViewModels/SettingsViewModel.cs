@@ -49,8 +49,6 @@ public class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
-    public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";
-
     public ICommand SaveCommand { get; }
     public ICommand CancelCommand { get; }
     public ICommand AddPromptCommand { get; }
@@ -88,7 +86,6 @@ public class SettingsViewModel : INotifyPropertyChanged
         Language = string.IsNullOrWhiteSpace(c.Language) ? "English" : c.Language;
         EnableClipboardLogging = c.EnableClipboardLogging;
         KeepTranscripts = c.KeepTranscripts;
-        CaptureInstruction = string.IsNullOrWhiteSpace(c.CaptureInstruction) ? "Describe the selected region succinctly." : c.CaptureInstruction;
         Prompts.Clear();
         foreach (var prompt in c.PromptShortcuts)
         {
@@ -96,7 +93,7 @@ public class SettingsViewModel : INotifyPropertyChanged
         }
         if (Prompts.Count == 0)
         {
-            Prompts.Add(PromptShortcutConfiguration.CreateCapture("Capture Screen", c.Hotkey, CaptureInstruction));
+            Prompts.Add(PromptShortcutConfiguration.CreateCapture("Capture Screen", c.Hotkey, PromptShortcutConfiguration.DefaultCapturePrompt));
         }
         SelectedPrompt = Prompts.FirstOrDefault();
         SelectedIcon = AvailableIcons
@@ -122,7 +119,6 @@ public class SettingsViewModel : INotifyPropertyChanged
         _store.Current.Language = Language;
         _store.Current.EnableClipboardLogging = EnableClipboardLogging;
         _store.Current.KeepTranscripts = KeepTranscripts;
-        _store.Current.CaptureInstruction = CaptureInstruction;
         _store.Current.PromptShortcuts = Prompts.Select(p => p.Clone()).ToList();
         _store.Current.IconAsset = SelectedIcon?.Key ?? string.Empty;
         _store.Save();

@@ -65,9 +65,6 @@ public class AppConfiguration
     public bool KeepTranscripts { get; set; }
 
     // Prompt customization
-    [JsonPropertyName("captureInstruction")]
-    public string CaptureInstruction { get; set; } = "Describe the selected region succinctly.";
-
     [JsonPropertyName("proofreadPrompt")]
     public string ProofreadPrompt { get; set; } = "Proofread and improve grammar, spelling, and clarity, while maintaining the original language of the text. Preserve tone and meaning. Keep formatting, newlines, tabs etc. exactly as in the original text. Return only the corrected text.";
 
@@ -83,7 +80,7 @@ public class AppConfiguration
                 PromptShortcutConfiguration.CreateCapture(
                     "Capture Screen",
                     string.IsNullOrWhiteSpace(Hotkey) ? "Ctrl+Shift+S" : Hotkey,
-                    string.IsNullOrWhiteSpace(CaptureInstruction) ? "Describe the selected region succinctly." : CaptureInstruction),
+                    PromptShortcutConfiguration.DefaultCapturePrompt),
                 PromptShortcutConfiguration.CreateTextSelection(
                     "Proofread Selection",
                     string.IsNullOrWhiteSpace(ProofreadHotkey) ? "Ctrl+Shift+P" : ProofreadHotkey,
@@ -109,14 +106,11 @@ public class AppConfiguration
             return;
         }
 
-        var capture = PromptShortcuts.FirstOrDefault(p => p.Activation == PromptActivationMode.CaptureScreen);
+        var capture = PromptShortcuts.FirstOrDefault(p => p.Activation == PromptActivationMode.CaptureScreen)
+            ?? PromptShortcuts.FirstOrDefault(p => p.Activation == PromptActivationMode.CaptureScreenFast);
         if (capture != null)
         {
             Hotkey = capture.Hotkey;
-            if (!string.IsNullOrWhiteSpace(capture.Prompt))
-            {
-                CaptureInstruction = capture.Prompt;
-            }
         }
 
         var proofread = PromptShortcuts.FirstOrDefault(p => p.Name.Contains("Proofread", StringComparison.OrdinalIgnoreCase));

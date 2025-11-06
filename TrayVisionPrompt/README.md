@@ -7,7 +7,7 @@ It targets fast everyday tasks—proofreading, translating, anonymising, answeri
 **Highlights**
 - Fluent-style Avalonia front-end with conversation timeline, quick actions, and a compact instruction dialog for capture workflows.
 - Animated tray icon with global hotkeys for every prompt; activation modes cover Capture Screen, Foreground Selection, and Text Dialog and can auto-apply results without showing a dialog.
-- Prompt shortcuts support custom names, hotkeys, prompt text, optional prefill, and per-prompt response dialogs for inline automation flows.
+- Prompt shortcuts support custom names, hotkeys, prompt text, and per-prompt response dialogs for inline automation flows.
 - OpenAI-compatible backends (Ollama, vLLM, llama.cpp) with endpoint normalization, proxy support, optional vision/OCR fallback, automatic language detection, and long-selection chunking.
 - Local HTTP API (`http://127.0.0.1:27124/v1/process`) for integrations, including bundled Chrome/Firefox context menu extensions.
 - Configurable experience stored under `%APPDATA%\deskLLM`: choose icon assets, enable clipboard logging, review transcripts, and open logs straight from the tray.
@@ -16,7 +16,8 @@ It targets fast everyday tasks—proofreading, translating, anonymising, answeri
 - Avalonia UI replaces the legacy WPF host for day-to-day use, delivering a Fluent dark theme, card layout, and conversation history.
 - Local API server powers browser extensions and other clients; proofread/translate is one POST away.
 - Chrome and Firefox extensions ship in `browser-extensions/` and hook into the local API for right-click proofreading/translation.
-- Prompt shortcuts gained `showResponseDialog`, `prefill`, and a new default “Anonymize Selection” preset; Settings now edits every aspect including icon choice and clipboard logging.
+- Prompt shortcuts gained `showResponseDialog`, a fast capture activation, and a new default “Anonymize Selection” preset; Settings now edits every aspect including icon choice and clipboard logging.
+- Capture overlay now spans multiple monitors and preserves drawn annotations in the final screenshot.
 - Improved integrations: Rocket.Chat clipboard-first flow, smarter text chunking, sanitised translation responses, and adaptive timeouts based on request size.
 
 **Repository Layout**
@@ -50,7 +51,7 @@ PowerShell execution policy locked down? Use the `.cmd` scripts or raw `dotnet` 
 **Configuration**
 - First run creates `%APPDATA%\deskLLM\config.json`.
 - Core options: backend (`ollama`, `vllm`, `llamacpp`), `endpoint`, `model`, timeouts, `useVision`, `useOcrFallback`, `language`, `proxy`, `iconAsset`, `enableClipboardLogging`, `keepTranscripts`, and `promptShortcuts`.
-- `promptShortcuts` entries now support `prefill` (for TextDialog prompts) and `showResponseDialog` (skip the dialog when replacing text inline).
+- `promptShortcuts` entries now support the `CaptureScreenFast` activation and `showResponseDialog` (skip the dialog when replacing text inline).
 - Example (abbreviated):
 ```json
 {
@@ -69,8 +70,8 @@ PowerShell execution policy locked down? Use the `.cmd` scripts or raw `dotnet` 
       "name": "Capture Screen",
       "hotkey": "Ctrl+Shift+S",
       "prompt": "Describe the selected region succinctly.",
-      "activation": "CaptureScreen",
-      "showResponseDialog": true
+      "activation": "CaptureScreenFast",
+      "showResponseDialog": false
     },
     {
       "id": "...",
@@ -105,16 +106,18 @@ PowerShell execution policy locked down? Use the `.cmd` scripts or raw `dotnet` 
 
 **Image Capture and Annotation**
 - Trigger a Capture Screen prompt via tray menu or a hotkey (e.g. `Ctrl+Shift+S`).
-- The overlay supports rectangle selection, drawing/undo, reset, and cancel. Confirming opens the instruction dialog with a live preview and optional prompt tweaks.
+- The overlay spans all connected monitors and supports rectangle selection, drawing/undo, reset, and cancel. Confirming opens the instruction dialog with a live preview and optional prompt tweaks.
+- Drawn annotations are baked into the captured image before it is sent to the backend.
 - When `useVision` is disabled but `useOcrFallback` is on, captured regions run through Windows OCR and the recognised text is sent instead of the image.
 
 **Add New Hotkey + Prompt Pairs**
 - Tray icon → Settings → Prompts:
-  - Add a prompt, choose name, global hotkey, activation mode, prompt text, optional prefill, and whether to show the response dialog.
+  - Add a prompt, choose name, global hotkey, activation mode, prompt text, and whether to show the response dialog.
   - Activation modes:
     - `CaptureScreen` – capture annotated screenshots (always shows a dialog).
+    - `CaptureScreenFast` – same capture workflow but skips the instruction dialog and submits immediately.
     - `ForegroundSelection` – capture the active selection and optionally auto-apply the response.
-    - `TextDialog` – open a text input dialog with optional prefill.
+    - `TextDialog` – open a text input dialog.
   - Save updates the config and re-registers hotkeys on the fly.
 - You can also edit `%APPDATA%\deskLLM\config.json` directly under `promptShortcuts`.
 

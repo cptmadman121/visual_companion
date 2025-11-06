@@ -87,7 +87,7 @@ public partial class App : global::Avalonia.Application
         });
     }
 
-    private async System.Threading.Tasks.Task StartCaptureAsync(PromptShortcutConfiguration? shortcut = null)
+    private async System.Threading.Tasks.Task StartCaptureAsync(PromptShortcutConfiguration? shortcut = null, bool skipInstructionDialog = false)
     {
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
@@ -96,18 +96,27 @@ public partial class App : global::Avalonia.Application
 
             if (annot.CapturedImageBase64 is string img && !string.IsNullOrWhiteSpace(img))
             {
-                var fallbackInstruction = string.IsNullOrWhiteSpace(_store.Current.CaptureInstruction)
-                    ? "Describe the selected region succinctly."
-                    : _store.Current.CaptureInstruction;
-                var prefill = string.IsNullOrWhiteSpace(shortcut?.Prompt) ? fallbackInstruction : shortcut!.Prompt;
-                var ask = new InstructionDialog { Instruction = prefill };
-                if (!string.IsNullOrWhiteSpace(shortcut?.Name))
+                var baseInstruction = string.IsNullOrWhiteSpace(shortcut?.Prompt)
+                    ? PromptShortcutConfiguration.DefaultCapturePrompt
+                    : shortcut!.Prompt;
+                var instruction = baseInstruction;
+
+                if (!skipInstructionDialog)
                 {
-                    ask.Title = shortcut!.Name;
+                    var ask = new InstructionDialog { Instruction = baseInstruction };
+                    if (!string.IsNullOrWhiteSpace(shortcut?.Name))
+                    {
+                        ask.Title = shortcut!.Name;
+                    }
+                    ask.SetThumbnail(img);
+                    await ask.ShowDialog(GetOwnerWindow());
+                    if (!ask.Confirmed)
+                    {
+                        _tray?.ClearStatus();
+                        return;
+                    }
+                    instruction = ask.Instruction;
                 }
-                ask.SetThumbnail(img);
-                await ask.ShowDialog(GetOwnerWindow());
-                if (!ask.Confirmed) { _tray?.ClearStatus(); return; }
 
                 _tray?.ShowPending();
                 ResponseDialog? resp = null;
@@ -120,16 +129,16 @@ public partial class App : global::Avalonia.Application
 
                 try
                 {
+                    _tray?.StartBusy();
                     string? ocr = null;
                     if (_store.Current.UseOcrFallback)
                     {
                         var ocrSvc = new OcrService();
                         ocr = await ocrSvc.TryExtractTextAsync(img);
                     }
-                    var prompt = string.IsNullOrWhiteSpace(ocr) ? ask.Instruction : $"{ask.Instruction}\n\nOCR-Fallback:\n{ocr}";
+                    var prompt = string.IsNullOrWhiteSpace(ocr) ? instruction : $"{instruction}\n\nOCR-Fallback:\n{ocr}";
                     using var llm = new LlmService();
-                    _tray?.StartBusy();
-                    var sys = SystemPromptBuilder.BuildForInstruction(ask.Instruction, null, _store.Current.Language);
+                    var sys = SystemPromptBuilder.BuildForInstruction(instruction, null, _store.Current.Language);
                     var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: sys);
                     text = TextUtilities.TrimTrailingNewlines(text);
                     if (string.IsNullOrWhiteSpace(text))
@@ -182,6 +191,9 @@ public partial class App : global::Avalonia.Application
         {
             case PromptActivationMode.CaptureScreen:
                 await StartCaptureAsync(shortcut);
+                break;
+            case PromptActivationMode.CaptureScreenFast:
+                await StartCaptureAsync(shortcut, skipInstructionDialog: true);
                 break;
             case PromptActivationMode.ForegroundSelection:
                 if (useClipboardFallback)

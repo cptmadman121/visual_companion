@@ -71,9 +71,21 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
         {
             Name = name,
             Hotkey = hotkey,
-            Prompt = prompt,
+            Prompt = string.IsNullOrWhiteSpace(prompt) ? DefaultCapturePrompt : prompt,
             Activation = PromptActivationMode.CaptureScreen,
             ShowResponseDialog = true
+        };
+    }
+
+    public static PromptShortcutConfiguration CreateCaptureFast(string name, string hotkey, string prompt)
+    {
+        return new PromptShortcutConfiguration
+        {
+            Name = name,
+            Hotkey = hotkey,
+            Prompt = string.IsNullOrWhiteSpace(prompt) ? DefaultCapturePrompt : prompt,
+            Activation = PromptActivationMode.CaptureScreenFast,
+            ShowResponseDialog = false
         };
     }
 
@@ -128,6 +140,7 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
+    public const string DefaultCapturePrompt = "Describe the selected region succinctly.";
     public const string DefaultProofreadPrompt = "Proofread and improve grammar, spelling, and clarity, while maintaining the original language of the text. Preserve tone and meaning. Keep formatting, newlines, tabs etc. exactly as in the original text. Return only the corrected text.";
     public const string DefaultTranslatePrompt = "If the provided text is not in German, translate it into German. If the provided text is in German, translate it into English. The entire translation process should preserve the tone, structure, and formatting of the original text. Return only the translated text.";
     public const string DefaultAnonymizePrompt = "Anonymize the provided text. Replace personal data such as real names, email addresses, phone numbers, or postal addresses with fictitious placeholders from the shows 'The Simpsons' or 'Futurama'. Preserve formatting and return only the sanitized text.";
@@ -136,6 +149,7 @@ public class PromptShortcutConfiguration : INotifyPropertyChanged
 public enum PromptActivationMode
 {
     CaptureScreen,
+    CaptureScreenFast,
     ForegroundSelection,
     TextDialog
 }
