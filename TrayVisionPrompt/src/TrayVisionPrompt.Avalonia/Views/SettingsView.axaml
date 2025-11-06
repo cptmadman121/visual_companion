@@ -66,12 +66,6 @@
 
             <TextBlock Classes="caption" Text="Prompt"/>
             <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="120" Text="{Binding SelectedPrompt.Prompt, Mode=TwoWay}"/>
-
-            <TextBlock Classes="caption" Text="Dialog Prefill"/>
-            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="80" Text="{Binding SelectedPrompt.Prefill, Mode=TwoWay}"/>
-
-            <TextBlock Classes="caption" Text="Fallback Capture Instruction"/>
-            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="80" Text="{Binding CaptureInstruction, Mode=TwoWay}"/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
