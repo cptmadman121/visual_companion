@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net.Http;
@@ -21,16 +22,21 @@ public partial class MainWindow : Window
     private readonly ConfigurationStore _store = new();
     private readonly TranscriptService _transcript;
     private readonly ObservableCollection<string> _availableModels = new();
+    private readonly StartupTutorialService _tutorialService = new();
 
     private ComboBox? _modelPicker;
     private ScrollViewer? _transcriptViewer;
     private bool _modelsLoaded;
     private bool _loadingModels;
     private bool _autoScroll = true;
+    private bool _tutorialRunning;
+    private Control? _tutorialHighlight;
+    private TutorialHintWindow? _tutorialHintWindow;
 
     public MainWindow()
     {
         InitializeComponent();
+        Opened += OnWindowOpened;
         _transcript = new TranscriptService(_store);
         Icon = IconProvider.LoadWindowIcon(_store.Current.IconAsset);
 
@@ -158,6 +164,12 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+        if (_tutorialHintWindow is not null)
+        {
+            _tutorialHintWindow.Close();
+            _tutorialHintWindow = null;
+        }
+        ClearTutorialHighlight();
         if (_transcriptViewer is not null)
         {
             _transcriptViewer.ScrollChanged -= OnTranscriptScrollChanged;
@@ -388,4 +400,257 @@ public partial class MainWindow : Window
         var currentOffset = _transcriptViewer.Offset.Y;
         _autoScroll = maxOffset - currentOffset <= 12;
     }
+
+    private async void OnWindowOpened(object? sender, EventArgs e)
+    {
+        if (_tutorialRunning || !_tutorialService.ShouldRunTutorial())
+        {
+            return;
+        }
+
+        _tutorialRunning = true;
+        try
+        {
+            await RunStartupTutorialAsync();
+        }
+        finally
+        {
+            _tutorialRunning = false;
+        }
+    }
+
+    private async Task RunStartupTutorialAsync()
+    {
+        var steps = CreateTutorialSteps();
+        if (steps.Count == 0)
+        {
+            _tutorialService.RecordOutcome(TutorialOutcome.Completed, "No tutorial steps configured");
+            return;
+        }
+
+        try
+        {
+            for (var i = 0; i < steps.Count; i++)
+            {
+                var continueTutorial = await ShowTutorialStepAsync(steps[i], i + 1, steps.Count);
+                if (!continueTutorial)
+                {
+                    await Dispatcher.UIThread.InvokeAsync(ResetPromptText);
+                    _tutorialService.RecordOutcome(TutorialOutcome.Skipped, $"Skipped at step {i + 1}: {steps[i].Title}");
+                    return;
+                }
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(ResetPromptText);
+            _tutorialService.RecordOutcome(TutorialOutcome.Completed, $"Completed {steps.Count} steps");
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(ResetPromptText);
+            _tutorialService.RecordFailure(ex);
+        }
+        finally
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (_tutorialHintWindow is not null)
+                {
+                    _tutorialHintWindow.Close();
+                    _tutorialHintWindow = null;
+                }
+
+                ClearTutorialHighlight();
+            });
+        }
+    }
+
+    private async Task<bool> ShowTutorialStepAsync(TutorialStep step, int stepNumber, int totalSteps)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        Control? target = null;
+        EventHandler? nextHandler = null;
+        EventHandler? skipHandler = null;
+        EventHandler? closedHandler = null;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            target = step.TargetResolver(this);
+            ClearTutorialHighlight();
+            step.OnEnter?.Invoke(this);
+
+            if (target is Control highlight)
+            {
+                _tutorialHighlight = highlight;
+                if (!highlight.Classes.Contains("tutorial-highlight"))
+                {
+                    highlight.Classes.Add("tutorial-highlight");
+                }
+
+                highlight.BringIntoView();
+            }
+
+            _tutorialHintWindow?.Close();
+            _tutorialHintWindow = new TutorialHintWindow();
+            var buttonText = step.PrimaryButtonText;
+            if (stepNumber == totalSteps && string.Equals(buttonText, "Next", StringComparison.OrdinalIgnoreCase))
+            {
+                buttonText = "Finish";
+            }
+
+            _tutorialHintWindow.SetContent(step.Title, step.Message, $"Step {stepNumber} of {totalSteps}", buttonText);
+            _tutorialHintWindow.AttachToTarget(target);
+
+            nextHandler = (_, _) => tcs.TrySetResult(true);
+            skipHandler = (_, _) => tcs.TrySetResult(false);
+            closedHandler = (_, _) =>
+            {
+                if (!tcs.Task.IsCompleted)
+                {
+                    tcs.TrySetResult(false);
+                }
+            };
+
+            _tutorialHintWindow.NextRequested += nextHandler;
+            _tutorialHintWindow.SkipRequested += skipHandler;
+            _tutorialHintWindow.Closed += closedHandler;
+            _tutorialHintWindow.Show(this);
+        });
+
+        var result = await tcs.Task;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (_tutorialHintWindow is not null)
+            {
+                if (nextHandler is not null)
+                {
+                    _tutorialHintWindow.NextRequested -= nextHandler;
+                }
+
+                if (skipHandler is not null)
+                {
+                    _tutorialHintWindow.SkipRequested -= skipHandler;
+                }
+
+                if (closedHandler is not null)
+                {
+                    _tutorialHintWindow.Closed -= closedHandler;
+                }
+
+                _tutorialHintWindow.Close();
+                _tutorialHintWindow = null;
+            }
+
+            ClearTutorialHighlight();
+        });
+
+        return result;
+    }
+
+    private void ResetPromptText()
+    {
+        if (FindControl<TextBox>("PromptBox") is { } prompt)
+        {
+            prompt.Text = string.Empty;
+            prompt.SelectionStart = 0;
+            prompt.SelectionEnd = 0;
+        }
+
+        if (DataContext is MainViewModel vm)
+        {
+            vm.Prompt = string.Empty;
+        }
+    }
+
+    private void ClearTutorialHighlight()
+    {
+        if (_tutorialHighlight is { } control)
+        {
+            control.Classes.Remove("tutorial-highlight");
+            _tutorialHighlight = null;
+        }
+    }
+
+    private List<TutorialStep> CreateTutorialSteps()
+    {
+        return new List<TutorialStep>
+        {
+            new(
+                "Welcome to TrayVisionPrompt",
+                "This quick tour highlights the core tools. You can stop at any time, and it will never show again once finished.",
+                _ => null,
+                "Start"),
+            new(
+                "Compose your prompt",
+                "Use the prompt card to type what you need. You can paste descriptions, questions, or notes before sending them to the assistant.",
+                window => window.FindControl<Border>("PromptCard"),
+                "Next",
+                window =>
+                {
+                    const string sample = "Summarize the highlighted screen selection.";
+                    if (window.FindControl<TextBox>("PromptBox") is { } prompt)
+                    {
+                        prompt.Text = sample;
+                        prompt.SelectionStart = sample.Length;
+                        prompt.SelectionEnd = sample.Length;
+                        prompt.Focus();
+                    }
+
+                    if (window.DataContext is MainViewModel vm)
+                    {
+                        vm.Prompt = sample;
+                    }
+                }),
+            new(
+                "Choose a model",
+                "Select the Ollama model that should answer your request. The list refreshes from the Ollama server when opened.",
+                window => window.FindControl<ComboBox>("ModelPicker")),
+            new(
+                "Capture the screen",
+                "Use Capture to snip an area of your desktop. You'll be able to annotate the screenshot before TrayVisionPrompt analyzes it.",
+                window => window.FindControl<Button>("CaptureButton")),
+            new(
+                "Send text prompts",
+                "When you just need text assistance, press Send. We'll contact the model with whatever you've typed in the prompt box.",
+                window => window.FindControl<Button>("SendButton")),
+            new(
+                "Review the conversation",
+                "All messages appear in this conversation panel. Scroll to revisit answers or copy useful excerpts whenever you like.",
+                window => window.FindControl<Border>("ConversationCard")),
+            new(
+                "Open settings",
+                "Settings lets you configure models, shortcuts, and logging. Adjust the app to match your workflow.",
+                window => window.FindControl<Button>("SettingsButton")),
+            new(
+                "Start a new session",
+                "Clear the conversation and begin again with New Session. It's helpful when switching tasks or topics.",
+                window => window.FindControl<Button>("NewSessionButton")),
+            new(
+                "You're all set",
+                "That's everything! TrayVisionPrompt will keep this record so you won't see the tutorial again. Have fun exploring.",
+                _ => null,
+                "Finish",
+                window =>
+                {
+                    if (window.FindControl<TextBox>("PromptBox") is { } prompt)
+                    {
+                        prompt.Text = string.Empty;
+                        prompt.SelectionStart = 0;
+                        prompt.SelectionEnd = 0;
+                    }
+
+                    if (window.DataContext is MainViewModel vm)
+                    {
+                        vm.Prompt = string.Empty;
+                    }
+                })
+        };
+    }
+
+    private sealed record TutorialStep(
+        string Title,
+        string Message,
+        Func<MainWindow, Control?> TargetResolver,
+        string PrimaryButtonText = "Next",
+        Action<MainWindow>? OnEnter = null);
 }
