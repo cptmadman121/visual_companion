@@ -63,4 +63,11 @@
   <Style Selector="CheckBox">
     <Setter Property="Foreground" Value="{StaticResource BrushOnSurface}" />
   </Style>
+
+  <Style Selector="Control.tutorial-highlight">
+    <Setter Property="Effect">
+      <DropShadowEffect Color="#CC66C3FF" BlurRadius="28" Opacity="0.9" />
+    </Setter>
+    <Setter Property="Panel.ZIndex" Value="50" />
+  </Style>
 </Styles>
