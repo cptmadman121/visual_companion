@@ -64,11 +64,9 @@
     <Setter Property="Foreground" Value="{StaticResource BrushOnSurface}" />
   </Style>
 
-  <Style Selector="*:is(.tutorial-highlight)">
-    <Setter Property="BoxShadow">
-      <BoxShadows>
-        <BoxShadow Color="#CC66C3FF" Blur="28" Spread="2" OffsetX="0" OffsetY="0" />
-      </BoxShadows>
+  <Style Selector="Control.tutorial-highlight">
+    <Setter Property="Effect">
+      <DropShadowEffect Color="#CC66C3FF" BlurRadius="28" Opacity="0.9" />
     </Setter>
     <Setter Property="Panel.ZIndex" Value="50" />
   </Style>

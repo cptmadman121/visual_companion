@@ -6,6 +6,9 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Button = Avalonia.Controls.Button;
+using Control = Avalonia.Controls.Control;
+using KeyEventArgs = Avalonia.Input.KeyEventArgs;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
@@ -66,7 +69,8 @@ public partial class TutorialHintWindow : Window
         if (Owner is Window owner)
         {
             owner.PositionChanged += OnOwnerPositionChanged;
-            _ownerBoundsSubscription = owner.GetObservable(BoundsProperty).Subscribe(_ => UpdatePosition());
+            _ownerBoundsSubscription = owner.GetObservable(BoundsProperty)
+                .Subscribe(new ActionObserver<Rect>(_ => UpdatePosition()));
         }
     }
 
@@ -104,9 +108,9 @@ public partial class TutorialHintWindow : Window
             if (_placementTarget is Control target && target.IsEffectivelyVisible)
             {
                 var bounds = target.Bounds;
-                var screenPoint = target.PointToScreen(new Point(bounds.Width, bounds.Height / 2));
+                var screenPoint = target.PointToScreen(new global::Avalonia.Point(bounds.Width, bounds.Height / 2));
                 desired = new PixelPoint(
-                    (int)Math.Round(screenPoint.X + 24),
+                    (int)Math.Round(screenPoint.X + 24d),
                     (int)Math.Round(screenPoint.Y - height / 2));
             }
             else if (Owner is Window owner)
@@ -127,8 +131,8 @@ public partial class TutorialHintWindow : Window
                 var available = screen.WorkingArea;
                 var maxX = available.Right - (int)Math.Round(width);
                 var maxY = available.Bottom - (int)Math.Round(height);
-                var clampedX = Math.Clamp(desired.X, available.Left, maxX);
-                var clampedY = Math.Clamp(desired.Y, available.Top, maxY);
+                var clampedX = Math.Clamp(desired.X, available.X, maxX);
+                var clampedY = Math.Clamp(desired.Y, available.Y, maxY);
                 Position = new PixelPoint(clampedX, clampedY);
             }
             else
@@ -163,5 +167,22 @@ public partial class TutorialHintWindow : Window
             e.Handled = true;
             SkipRequested?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private sealed class ActionObserver<T> : IObserver<T>
+    {
+        private readonly Action<T> _onNext;
+
+        public ActionObserver(Action<T> onNext) => _onNext = onNext;
+
+        public void OnCompleted()
+        {
+        }
+
+        public void OnError(Exception error)
+        {
+        }
+
+        public void OnNext(T value) => _onNext(value);
     }
 }

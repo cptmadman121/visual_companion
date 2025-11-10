@@ -7,12 +7,8 @@
         x:Class="TrayVisionPrompt.Avalonia.Views.MainWindow"
         Width="980" Height="680"
         TransparencyLevelHint="AcrylicBlur, Blur"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaTitleBarHeightHint="32"
-        ExtendClientAreaChromeHints="NoChrome"
-        SystemDecorations="None"
         Background="{StaticResource BrushSurface}"
-        Title="TrayVisionPrompt">
+        Title="DeskLLM">
   <Design.DataContext>
     <vm:MainViewModel />
   </Design.DataContext>
@@ -26,12 +22,11 @@
       <Grid ColumnDefinitions="Auto,*,Auto" Height="48">
         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Path Data="M12,2 L2,7 L12,12 L22,7 Z" Fill="{StaticResource BrushBrandPrimary}" Width="16" Height="16" Margin="8,0"/>
-          <TextBlock Classes="h2" Text="TrayVisionPrompt"/>
+          <TextBlock Classes="h2" Text="DeskLLM"/>
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
           <Button x:Name="SettingsButton" Content="Settings" Click="OnOpenSettings"/>
           <Button x:Name="NewSessionButton" Classes="primary" Content="New Session" Click="OnNewSession"/>
-          <Button Content="×" Width="36" Click="OnClose" ToolTip.Tip="Close"/>
         </StackPanel>
       </Grid>
 

@@ -14,6 +14,9 @@ using TrayVisionPrompt.Avalonia.Services;
 using TrayVisionPrompt.Avalonia.ViewModels;
 using TrayVisionPrompt.Avalonia.Views;
 using ComboBox = Avalonia.Controls.ComboBox;
+using Control = Avalonia.Controls.Control;
+using Button = Avalonia.Controls.Button;
+using TextBox = Avalonia.Controls.TextBox;
 
 namespace TrayVisionPrompt.Avalonia.Views;
 
@@ -53,8 +56,6 @@ public partial class MainWindow : Window
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
-
-    public void OnClose(object? sender, RoutedEventArgs e) => Close();
 
     public async void OnOpenSettings(object? sender, RoutedEventArgs e)
     {
@@ -549,7 +550,7 @@ public partial class MainWindow : Window
 
     private void ResetPromptText()
     {
-        if (FindControl<TextBox>("PromptBox") is { } prompt)
+        if (this.FindControl<TextBox>("PromptBox") is { } prompt)
         {
             prompt.Text = string.Empty;
             prompt.SelectionStart = 0;
