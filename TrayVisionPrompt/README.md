@@ -123,9 +123,10 @@ PowerShell execution policy locked down? Use the `.cmd` scripts or raw `dotnet` 
 
 **Browser Extensions & Local API**
 - The Avalonia app hosts `http://127.0.0.1:27124/v1/process`. POST `{ "action": "proofread" | "translate", "text": "..." }` or supply `extraPrompt` for custom behaviour.
-- Chrome/Edge: load `browser-extensions/chrome` unpacked; Firefox: load `browser-extensions/firefox` as a temporary add-on. Each adds “Proofread with deskLLM” and “Translate with deskLLM” context menu items.
+- Chrome/Edge: load `browser-extensions/chrome` unpacked; Firefox: load `browser-extensions/firefox` as a temporary add-on. The Chrome MV3 build now mirrors the tray menu (root “deskLLM” entry with your prompts), supports hotkeys everywhere in Chrome, and ships a full conversation + configuration UI from the toolbar icon/options page.
+- The extension keeps your endpoint/model/settings in `chrome.storage.sync`, calls the local `/v1/process` by default for proofread/translate, and falls back to direct `chat/completions` for everything else (including capture workflows with vision). Popups and the options page share the same chat history stored locally.
 - If the API fails to start, add a URL ACL from an elevated terminal: `netsh http add urlacl url=http://127.0.0.1:27124/ user=Everyone`.
-- Extensions replace the selection inline; on failure they fall back to inserting via the DOM.
+- Extensions replace the selection inline; on failure they fall back to inserting via the DOM or show an inline response dialog.
 
 **Backend Support**
 - Works with OpenAI-compatible Chat Completions endpoints; images are sent as base64 when vision is enabled.
@@ -148,6 +149,13 @@ PowerShell execution policy locked down? Use the `.cmd` scripts or raw `dotnet` 
 - Optimised for Rocket.Chat and similar Electron apps: the service tries Ctrl+C, Ctrl+Insert, and Shift+Insert sequences to copy/paste reliably.
 - Clipboard-first flow: when Rocket.Chat is focused, deskLLM reuses the current clipboard, sends it to the LLM, and places the answer back on the clipboard—press `Ctrl+V` to send without a dialog.
 - If global hotkeys still do not trigger, adjust the combinations, ensure both apps run non-admin, or use the tray menu as a workaround.
+
+**Chrome Extension Installation**
+- Build is already in `browser-extensions/chrome`; no tooling required. In Chrome open `chrome://extensions`, enable Developer Mode, choose **Load unpacked**, and point it at that folder.
+- Visit `chrome://extensions/shortcuts` to bind your preferred hotkeys to the deskLLM commands (Proofread, Translate, Anonymize, Capture, Open panel). The labels shown in the UI are pulled from the shortcut cards.
+- Click the deskLLM toolbar icon to open the chat + configuration view, or right-click anywhere to use the `deskLLM` context menu (mirrors the tray: Open panel + prompt entries).
+- Configure endpoint/model/API key inside the extension UI. By default it hits the local `/v1/process` for proofread/translate and your configured `chat/completions` endpoint for chat/capture flows.
+- For vision/capture flows make sure your model supports images; Chrome will capture the visible tab and send it as `data:image/png;base64,...` together with your prompt.
 
 **License**
 - Internal/for local use. No telemetry. See repository policies if present.

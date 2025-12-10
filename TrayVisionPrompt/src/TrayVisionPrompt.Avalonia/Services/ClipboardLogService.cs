@@ -4,11 +4,12 @@ using TrayVisionPrompt.Avalonia.Configuration;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
-public sealed class ClipboardLogService
+public sealed class ClipboardLogService : IDisposable
 {
     private readonly ConfigurationStore _store;
     private readonly string _logPath;
     private readonly object _sync = new();
+    private bool _disposed;
 
     public ClipboardLogService(ConfigurationStore store)
     {
@@ -23,7 +24,7 @@ public sealed class ClipboardLogService
 
     public void Log(string message)
     {
-        if (!_store.Current.EnableClipboardLogging)
+        if (_disposed || !_store.Current.EnableClipboardLogging)
         {
             return;
         }
@@ -33,6 +34,17 @@ public sealed class ClipboardLogService
         {
             File.AppendAllText(_logPath, line + Environment.NewLine);
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+        ConfigurationStore.ConfigurationChanged -= OnConfigurationChanged;
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 
     private void OnConfigurationChanged(object? sender, EventArgs e)
