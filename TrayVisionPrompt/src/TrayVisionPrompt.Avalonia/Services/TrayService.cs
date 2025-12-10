@@ -17,10 +17,15 @@ public sealed class TrayService : IDisposable
     private const string DefaultIconAsset = "ollama-companion.ico";
     private readonly ContextMenuStrip _menu = new();
     private readonly System.Windows.Forms.Timer _animTimer = new();
-    private int _pulseStep;
+    private double _edgeProgress;
     private int _busyCount;
     private Icon? _baseIcon;
     private Icon? _dynamicIcon;
+    private bool _pendingMode;
+    private bool _flashMode;
+    private int _flashLoops;
+    private long _flashStartMs;
+    private const int FlashLoopDurationMs = 1000;
 
     public event EventHandler? OpenRequested;
     public event EventHandler? SettingsRequested;
@@ -39,7 +44,7 @@ public sealed class TrayService : IDisposable
         };
 
         _baseIcon = _notifyIcon.Icon != null ? (Icon)_notifyIcon.Icon.Clone() : null;
-        _animTimer.Interval = 300; // ms
+        _animTimer.Interval = 120; // ms
         _animTimer.Tick += (_, _) => OnAnimate();
     }
 
@@ -56,9 +61,11 @@ public sealed class TrayService : IDisposable
         {
             if (System.Threading.Interlocked.Increment(ref _busyCount) == 1)
             {
-                _pulseStep = 0;
+                _pendingMode = false;
+                _flashMode = false;
+                _flashLoops = 0;
+                _edgeProgress = 0;
                 _animTimer.Start();
-                // switch immediately to animated green state without waiting for first tick
                 OnAnimate();
             }
         }
@@ -72,6 +79,9 @@ public sealed class TrayService : IDisposable
             if (System.Threading.Interlocked.Decrement(ref _busyCount) <= 0)
             {
                 _busyCount = 0;
+                _pendingMode = false;
+                _flashMode = false;
+                _flashLoops = 0;
                 _animTimer.Stop();
                 RestoreBaseIcon();
             }
@@ -83,12 +93,13 @@ public sealed class TrayService : IDisposable
     {
         try
         {
-            _animTimer.Stop();
-            var icon = CreateOverlayIcon(1.0f, pending: true);
-            var old = _dynamicIcon;
-            _dynamicIcon = icon;
-            _notifyIcon.Icon = icon;
-            old?.Dispose();
+            _busyCount = 0;
+            _pendingMode = true;
+            _flashMode = false;
+            _flashLoops = 0;
+            _edgeProgress = 0;
+            _animTimer.Start();
+            OnAnimate();
         }
         catch { }
     }
@@ -98,8 +109,70 @@ public sealed class TrayService : IDisposable
         try
         {
             _busyCount = 0;
+            _pendingMode = false;
+            _flashMode = false;
+            _flashLoops = 0;
             _animTimer.Stop();
             RestoreBaseIcon();
+        }
+        catch { }
+    }
+
+    public void FlashCompleted()
+    {
+        try
+        {
+            _busyCount = 0;
+            _pendingMode = false;
+            _flashMode = true;
+            _flashLoops = 3;
+            _flashStartMs = Environment.TickCount64;
+            _edgeProgress = 0;
+            _animTimer.Start();
+            OnAnimate();
+        }
+        catch { }
+    }
+
+    public void RefreshShellIcon()
+    {
+        try
+        {
+            var wasPending = _dynamicIcon != null && _busyCount == 0;
+            var previousCurrent = _notifyIcon.Icon;
+            var previousBase = _baseIcon;
+            var previousDynamic = _dynamicIcon;
+            _animTimer.Stop();
+            _dynamicIcon?.Dispose();
+            _dynamicIcon = null;
+
+            var icon = LoadIcon(_iconAsset);
+            _notifyIcon.Icon = icon;
+            _notifyIcon.Visible = true;
+            _baseIcon = icon != null ? (Icon)icon.Clone() : null;
+
+            if (!ReferenceEquals(previousCurrent, icon) && !ReferenceEquals(previousCurrent, previousBase) && !ReferenceEquals(previousCurrent, previousDynamic))
+            {
+                previousCurrent?.Dispose();
+            }
+            if (!ReferenceEquals(previousBase, _baseIcon) && !ReferenceEquals(previousBase, previousCurrent))
+            {
+                previousBase?.Dispose();
+            }
+
+            if (_busyCount > 0)
+            {
+                _pendingMode = false;
+                _flashMode = false;
+                _flashLoops = 0;
+                _edgeProgress = 0;
+                _animTimer.Start();
+                OnAnimate();
+            }
+            else if (wasPending || _pendingMode)
+            {
+                ShowPending();
+            }
         }
         catch { }
     }
@@ -108,9 +181,30 @@ public sealed class TrayService : IDisposable
     {
         try
         {
-            _pulseStep = (_pulseStep + 1) % 8;
-            var scale = 0.6f + 0.4f * (float)Math.Abs(Math.Sin(_pulseStep * Math.PI / 4.0));
-            var icon = CreateOverlayIcon(scale, pending: false);
+            if (_flashMode)
+            {
+                var elapsed = Math.Max(0, Environment.TickCount64 - _flashStartMs);
+                var completedLoops = (int)(elapsed / FlashLoopDurationMs);
+                if (completedLoops >= _flashLoops)
+                {
+                    _flashMode = false;
+                    _animTimer.Stop();
+                    RestoreBaseIcon();
+                    return;
+                }
+
+                var loopProgress = (elapsed % FlashLoopDurationMs) / (double)FlashLoopDurationMs;
+                var pulse = 0.5 + 0.5 * Math.Sin(loopProgress * Math.PI * 4); // small-big-small-big over 1s
+                var iconFlash = CreateOverlayIcon(pulse, pending: true, flash: true);
+                var oldFlash = _dynamicIcon;
+                _dynamicIcon = iconFlash;
+                _notifyIcon.Icon = iconFlash;
+                oldFlash?.Dispose();
+                return;
+            }
+
+            _edgeProgress = (_edgeProgress + 0.08) % 1.0;
+            var icon = CreateOverlayIcon(_edgeProgress, pending: _pendingMode || _busyCount == 0, flash: false);
             var old = _dynamicIcon;
             _dynamicIcon = icon;
             _notifyIcon.Icon = icon;
@@ -204,7 +298,7 @@ public sealed class TrayService : IDisposable
         _notifyIcon.Dispose();
     }
 
-    private Icon CreateOverlayIcon(float overlayScale, bool pending)
+    private Icon CreateOverlayIcon(double progress, bool pending, bool flash)
     {
         var baseIcon = _baseIcon ?? _notifyIcon.Icon ?? LoadIcon(_iconAsset);
         using var bmp = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
@@ -217,17 +311,38 @@ public sealed class TrayService : IDisposable
                 g.DrawIcon(baseIcon, new Rectangle(0, 0, 32, 32));
             }
 
-            var radius = Math.Max(5f, 6.5f * overlayScale);
-            var center = new System.Drawing.PointF(25.5f, 25.5f);
-            var alpha = (int)(200 + 55 * overlayScale);
-            var (r, gC, b) = pending ? (241, 196, 15) : (46, 204, 113); // yellow vs green
-            using var dotBrush = new SolidBrush(Color.FromArgb(Math.Min(255, Math.Max(0, alpha)), r, gC, b));
-            using var outline = new Pen(Color.White, 1.6f);
-            var x = center.X - radius;
-            var y = center.Y - radius;
-            var d = radius * 2f;
-            g.FillEllipse(dotBrush, x, y, d, d);
-            g.DrawEllipse(outline, x, y, d, d);
+            if (flash)
+            {
+                var pulse = Math.Max(0f, Math.Min(1f, (float)progress));
+                var baseInset = 3f;
+                var inset = baseInset + (1.2f * (1f - pulse));
+                var rect = new RectangleF(inset, inset, 32 - inset * 2, 32 - inset * 2);
+                var alpha = 255;
+                var (r, gC, b) = (52, 152, 219); // blue
+                using var pen = new Pen(Color.FromArgb(alpha, r, gC, b), 3.2f + 1.4f * pulse)
+                {
+                    StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                    EndCap = System.Drawing.Drawing2D.LineCap.Round
+                };
+                g.DrawRectangle(pen, rect.X, rect.Y, rect.Width, rect.Height);
+            }
+            else
+            {
+                var inset = 3f;
+                var rect = new RectangleF(inset, inset, 32 - inset * 2, 32 - inset * 2);
+                var alpha = 230;
+                var (r, gC, b) = pending ? (241, 196, 15) : (46, 204, 113); // yellow vs green
+                using var pen = new Pen(Color.FromArgb(alpha, r, gC, b), 3.4f)
+                {
+                    StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                    EndCap = System.Drawing.Drawing2D.LineCap.Round
+                };
+
+                var perimeter = 2 * (rect.Width + rect.Height);
+                var start = (float)(perimeter * progress);
+                var length = perimeter * 0.35f;
+                DrawPerimeterSegment(g, rect, start, length, pen);
+            }
         }
 
         var handle = bmp.GetHicon();
@@ -241,6 +356,65 @@ public sealed class TrayService : IDisposable
             NativeMethods.DestroyIcon(handle);
         }
     }
+
+    private static void DrawPerimeterSegment(Graphics g, RectangleF rect, float start, float length, Pen pen)
+    {
+        var perimeter = 2 * (rect.Width + rect.Height);
+        float remaining = length;
+        float pos = Wrap(start, perimeter);
+
+        while (remaining > 0.01f)
+        {
+            GetEdge(pos, rect, out var edgeStart, out var direction, out var edgeRemaining);
+            var take = Math.Min(remaining, edgeRemaining);
+            var p1 = edgeStart;
+            var p2 = new PointF(edgeStart.X + direction.X * take, edgeStart.Y + direction.Y * take);
+            g.DrawLine(pen, p1, p2);
+
+            pos = Wrap(pos + take, perimeter);
+            remaining -= take;
+        }
+    }
+
+    private static void GetEdge(float pos, RectangleF rect, out PointF start, out PointF direction, out float remaining)
+    {
+        var top = rect.Width;
+        var right = top + rect.Height;
+        var bottom = right + rect.Width;
+
+        if (pos < top)
+        {
+            start = new PointF(rect.Left + pos, rect.Top);
+            direction = new PointF(1, 0);
+            remaining = top - pos;
+            return;
+        }
+
+        if (pos < right)
+        {
+            var offset = pos - top;
+            start = new PointF(rect.Right, rect.Top + offset);
+            direction = new PointF(0, 1);
+            remaining = rect.Height - offset;
+            return;
+        }
+
+        if (pos < bottom)
+        {
+            var offset = pos - right;
+            start = new PointF(rect.Right - offset, rect.Bottom);
+            direction = new PointF(-1, 0);
+            remaining = rect.Width - offset;
+            return;
+        }
+
+        var leftOffset = pos - bottom;
+        start = new PointF(rect.Left, rect.Bottom - leftOffset);
+        direction = new PointF(0, -1);
+        remaining = rect.Height - leftOffset;
+    }
+
+    private static float Wrap(float value, float max) => value >= max ? value - max : value < 0 ? value + max : value;
 
 
     private static Icon LoadIcon(string? iconAsset)
