@@ -1,6 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -32,8 +35,12 @@ public partial class App : global::Avalonia.Application
     private DateTimeOffset _lastTrayRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset _lastInteraction = DateTimeOffset.Now;
     private readonly TimeSpan _clipboardIdleAutotestThreshold = TimeSpan.FromHours(1);
+    private Task? _warmupTask;
+    private bool _clipboardReady;
+    private readonly SemaphoreSlim _clipboardReadyGate = new(1, 1);
     private bool _isRestarting;
     private bool _disposed;
+    private readonly string _logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrayVisionPrompt", "error.log");
 
     public override void Initialize()
     {
@@ -44,6 +51,7 @@ public partial class App : global::Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            RegisterGlobalExceptionHandlers();
             desktop.Exit += (_, __) => Cleanup();
 
             var hidden = new Window
@@ -109,6 +117,7 @@ public partial class App : global::Avalonia.Application
             SubscribeSystemEvents();
             StartHealthMonitor();
             _ = RunHealthMaintenanceAsync(force: true);
+            _warmupTask = Task.CompletedTask;
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -119,6 +128,50 @@ public partial class App : global::Avalonia.Application
         _clipboardLog = new ClipboardLogService(_store);
         _textService = new ForegroundTextService(_clipboardLog);
         _textService.ClipboardFaulted += OnClipboardFaulted;
+        _clipboardReady = false;
+    }
+
+    private void RegisterGlobalExceptionHandlers()
+    {
+        Dispatcher.UIThread.UnhandledException += (s, e) =>
+        {
+            LogException(e.Exception, "UI thread");
+            e.Handled = true;
+        };
+
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            LogException(e.Exception, "Background task");
+            e.SetObserved();
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            LogException(e.ExceptionObject as Exception, "App domain");
+        };
+    }
+
+    private void LogException(Exception? ex, string context)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(_logPath);
+            if (!string.IsNullOrWhiteSpace(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            File.AppendAllLines(_logPath, new[]
+            {
+                $"[{DateTimeOffset.Now:u}] {context}",
+                ex?.ToString() ?? "Unknown exception",
+                "----"
+            });
+        }
+        catch
+        {
+            // Best-effort logging; never crash.
+        }
     }
 
     private void ShowMainWindow()
@@ -153,6 +206,7 @@ public partial class App : global::Avalonia.Application
         _clipboardLog?.Log("Reinitializing clipboard services after fault");
         DisposeClipboardServices();
         InitializeClipboardServices();
+        _clipboardReady = false;
         _clipboardLog?.Log("Clipboard services reinitialized");
     }
 
@@ -161,10 +215,12 @@ public partial class App : global::Avalonia.Application
         if (_textService != null)
         {
             _textService.ClipboardFaulted -= OnClipboardFaulted;
+            _textService.Dispose();
         }
         _textService = null;
         _clipboardLog?.Dispose();
         _clipboardLog = null;
+        _clipboardReady = false;
     }
 
     private void SubscribeSystemEvents()
@@ -238,6 +294,127 @@ public partial class App : global::Avalonia.Application
         {
             _clipboardLog?.Log($"Health monitor error: {ex.Message}");
         }
+    }
+
+    private async System.Threading.Tasks.Task WarmupServicesAsync()
+    {
+        // Prime clipboard access early so the first user interaction doesn't pay the cold-start cost
+        try
+        {
+            await System.Threading.Tasks.Task.Delay(300);
+            var sw = Stopwatch.StartNew();
+            if (!EnsureClipboardServiceAvailable(nameof(WarmupServicesAsync)))
+            {
+                return;
+            }
+
+            var probeOk = await _textService!.ProbeClipboardAsync();
+            if (!probeOk)
+            {
+                _clipboardLog?.Log("Warmup: clipboard probe failed; rebuilding services");
+                ReinitializeClipboardServices();
+                return;
+            }
+
+            // Single read primes the STA clipboard pipeline without mutating the clipboard
+            _ = await _textService!.GetClipboardTextAsync();
+            _clipboardLog?.Log($"Warmup completed in {sw.ElapsedMilliseconds} ms");
+        }
+        catch (Exception ex)
+        {
+            _clipboardLog?.Log($"Warmup error: {ex.Message}");
+        }
+    }
+
+    private async System.Threading.Tasks.Task WarmupLlmAsync()
+    {
+        try
+        {
+            // Give UI thread a moment to settle, then prime the backend connection with a tiny request
+            await System.Threading.Tasks.Task.Delay(500);
+            using var llm = new LlmService();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await llm.WarmupAsync(cts.Token);
+            _clipboardLog?.Log("LLM warmup completed");
+        }
+        catch (Exception ex)
+        {
+            _clipboardLog?.Log($"LLM warmup skipped: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> EnsureClipboardReadyAsync(string context)
+    {
+        _clipboardLog?.Log($"{context}: ensure clipboard ready");
+        await _clipboardReadyGate.WaitAsync();
+        try
+        {
+            if (_disposed)
+            {
+                _clipboardLog?.Log($"{context}: clipboard ready aborted (disposed)");
+                return false;
+            }
+
+            if (!EnsureClipboardServiceAvailable(context))
+            {
+                _clipboardLog?.Log($"{context}: clipboard service unavailable");
+                return false;
+            }
+
+            if (_clipboardReady)
+            {
+                _clipboardLog?.Log($"{context}: clipboard already ready");
+                return true;
+            }
+
+            var ok = await _textService!.ProbeClipboardAsync();
+            if (!ok)
+            {
+                _clipboardLog?.Log($"{context}: clipboard probe failed; continuing without warmup");
+            }
+
+            _clipboardReady = true;
+            _clipboardLog?.Log($"{context}: clipboard marked ready (probe={ok})");
+            return true;
+        }
+        finally
+        {
+            _clipboardReadyGate.Release();
+        }
+    }
+
+    private async Task<string?> ReadClipboardWithRecoveryAsync()
+    {
+        var sw = Stopwatch.StartNew();
+        if (!await EnsureClipboardReadyAsync(nameof(ReadClipboardWithRecoveryAsync)))
+        {
+            return null;
+        }
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            var attemptSw = Stopwatch.StartNew();
+            var text = await _textService!.GetClipboardTextAsync();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                _clipboardLog?.Log($"ReadClipboardWithRecoveryAsync: success on attempt {attempt} in {attemptSw.ElapsedMilliseconds} ms");
+                return text;
+            }
+
+            _clipboardLog?.Log($"ReadClipboardWithRecoveryAsync: attempt {attempt} returned empty in {attemptSw.ElapsedMilliseconds} ms");
+            await Task.Delay(attempt == 1 ? 120 : 220);
+            if (attempt == 2)
+            {
+                ReinitializeClipboardServices();
+                if (!await EnsureClipboardReadyAsync(nameof(ReadClipboardWithRecoveryAsync)))
+                {
+                    return null;
+                }
+            }
+        }
+
+        _clipboardLog?.Log($"ReadClipboardWithRecoveryAsync: failed after {sw.ElapsedMilliseconds} ms");
+        return null;
     }
 
     private void RefreshTrayIconIfNeeded(bool force)
@@ -333,6 +510,13 @@ public partial class App : global::Avalonia.Application
 
     private async System.Threading.Tasks.Task StartCaptureAsync(PromptShortcutConfiguration? shortcut = null, bool skipInstructionDialog = false)
     {
+        if (!await EnsureClipboardReadyAsync(nameof(StartCaptureAsync)))
+        {
+            _tray?.ClearStatus();
+            await ShowMessageAsync("Clipboard services are restarting. Please try again in a moment.");
+            return;
+        }
+
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
             var annot = new AnnotationWindow();
@@ -364,6 +548,7 @@ public partial class App : global::Avalonia.Application
 
                 _tray?.ShowPending();
                 ResponseDialog? resp = null;
+                var slowNoticeFlag = 0;
                 var wantsDialog = shortcut?.ShowResponseDialog ?? true;
                 if (wantsDialog)
                 {
@@ -384,7 +569,9 @@ public partial class App : global::Avalonia.Application
                     var prompt = string.IsNullOrWhiteSpace(ocr) ? instruction : $"{instruction}\n\nOCR-Fallback:\n{ocr}";
                     using var llm = new LlmService();
                     var sys = SystemPromptBuilder.BuildForInstruction(instruction, null, _store.Current.Language);
-                    var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: sys);
+                    var sendTask = llm.SendAsync(prompt, img, forceVision: true, systemPrompt: sys);
+                    NotifyIfSlow(sendTask, resp, () => Interlocked.Exchange(ref slowNoticeFlag, 1) == 0);
+                    var text = await sendTask;
                     text = TextUtilities.TrimTrailingNewlines(text);
                     if (string.IsNullOrWhiteSpace(text))
                     {
@@ -485,7 +672,8 @@ public partial class App : global::Avalonia.Application
 
     private async System.Threading.Tasks.Task RunForegroundPromptAsync(PromptShortcutConfiguration shortcut)
     {
-        if (!EnsureClipboardServiceAvailable(nameof(RunForegroundPromptAsync)))
+        var sw = Stopwatch.StartNew();
+        if (!await EnsureClipboardReadyAsync(nameof(RunForegroundPromptAsync)))
         {
             _tray?.ClearStatus();
             await ShowMessageAsync("Clipboard services are restarting. Please try again in a moment.");
@@ -499,7 +687,9 @@ public partial class App : global::Avalonia.Application
         }
 
         // Capture on a background STA first to avoid stealing focus from the target app
+        _clipboardLog?.Log("RunForegroundPromptAsync: starting capture");
         var capture = await _textService!.CaptureAsync();
+        _clipboardLog?.Log($"RunForegroundPromptAsync: capture completed in {sw.ElapsedMilliseconds} ms (hasSelection={capture.HasSelection}, textLength={capture.Text?.Length ?? 0})");
         if (string.IsNullOrWhiteSpace(capture.Text))
         {
             _tray?.ClearStatus();
@@ -530,11 +720,13 @@ public partial class App : global::Avalonia.Application
                 var shouldCopyToClipboard = !shortcut.ShowResponseDialog || !capture.HasSelection;
                 if (shouldCopyToClipboard)
                 {
+                    _clipboardLog?.Log($"RunForegroundPromptAsync: writing response to clipboard ({response.Length} chars)");
                     await _textService!.SetClipboardTextAsync(response);
                 }
 
                 if (capture.HasSelection)
                 {
+                    _clipboardLog?.Log($"RunForegroundPromptAsync: replacing selection ({response.Length} chars)");
                     await _textService!.ReplaceSelectionAsync(capture.WindowHandle, response);
                 }
                 flashCompleted = true;
@@ -552,19 +744,21 @@ public partial class App : global::Avalonia.Application
                 }
             }
         });
+        _clipboardLog?.Log($"RunForegroundPromptAsync: completed in {sw.ElapsedMilliseconds} ms");
     }
 
     private async System.Threading.Tasks.Task RunTextDialogPromptAsync(PromptShortcutConfiguration shortcut)
     {
+        var sw = Stopwatch.StartNew();
+        if (!await EnsureClipboardReadyAsync(nameof(RunTextDialogPromptAsync)))
+        {
+            _tray?.ClearStatus();
+            await ShowMessageAsync("Clipboard services are restarting. Please try again in a moment.");
+            return;
+        }
+
         await Dispatcher.UIThread.InvokeAsync(async () =>
         {
-            if (!EnsureClipboardServiceAvailable(nameof(RunTextDialogPromptAsync)))
-            {
-                _tray?.ClearStatus();
-                await ShowMessageAsync("Clipboard services are restarting. Please try again in a moment.");
-                return;
-            }
-
             var owner = GetOwnerWindow();
             var dialog = new TextPromptDialog
             {
@@ -591,6 +785,7 @@ public partial class App : global::Avalonia.Application
                     return;
                 }
 
+                _clipboardLog?.Log($"RunTextDialogPromptAsync: writing response to clipboard ({response.Length} chars)");
                 await _textService!.SetClipboardTextAsync(response);
                 if (shortcut.ShowResponseDialog)
                 {
@@ -612,11 +807,13 @@ public partial class App : global::Avalonia.Application
                 }
             }
         });
+        _clipboardLog?.Log($"RunTextDialogPromptAsync: completed in {sw.ElapsedMilliseconds} ms");
     }
 
     private async System.Threading.Tasks.Task RunClipboardPromptAsync(PromptShortcutConfiguration shortcut, bool showResponseDialog)
     {
-        if (!EnsureClipboardServiceAvailable(nameof(RunClipboardPromptAsync)))
+        var sw = Stopwatch.StartNew();
+        if (!await EnsureClipboardReadyAsync(nameof(RunClipboardPromptAsync)))
         {
             _tray?.ClearStatus();
             await ShowMessageAsync("Clipboard services are restarting. Please try again in a moment.");
@@ -624,7 +821,7 @@ public partial class App : global::Avalonia.Application
         }
 
         _clipboardLog?.Log($"Clipboard prompt requested: {shortcut.Name} ({shortcut.Activation})");
-        var clipboardText = await _textService!.GetClipboardTextAsync();
+        var clipboardText = await ReadClipboardWithRecoveryAsync();
         _clipboardLog?.Log(string.IsNullOrEmpty(clipboardText)
             ? "Clipboard read returned empty text"
             : $"Clipboard read returned {clipboardText.Length} characters");
@@ -656,6 +853,7 @@ public partial class App : global::Avalonia.Application
                     return;
                 }
 
+                _clipboardLog?.Log($"RunClipboardPromptAsync: writing response to clipboard ({response.Length} chars)");
                 await _textService!.SetClipboardTextAsync(response);
                 _clipboardLog?.Log($"Clipboard response written with {response.Length} characters");
                 if (shouldShowDialog)
@@ -678,6 +876,7 @@ public partial class App : global::Avalonia.Application
                 }
             }
         });
+        _clipboardLog?.Log($"RunClipboardPromptAsync: completed in {sw.ElapsedMilliseconds} ms");
     }
 
     private async System.Threading.Tasks.Task<string?> ExecuteTextPromptAsync(string input, PromptShortcutConfiguration shortcut)
@@ -698,13 +897,16 @@ public partial class App : global::Avalonia.Application
 
         using var llm = new LlmService();
         var combined = new System.Text.StringBuilder();
+        var slowNoticeFlag = 0;
 
         for (var index = 0; index < chunks.Count; index++)
         {
             var chunk = chunks[index];
             var systemPrompt = SystemPromptBuilder.BuildForSelection(chunk, effectivePrompt, _store.Current.Language);
             var userContent = BuildChunkUserContent(chunk, effectivePrompt, isTranslate, index, chunks.Count);
-            var response = await llm.SendAsync(userContent, systemPrompt: systemPrompt);
+            var sendTask = llm.SendAsync(userContent, systemPrompt: systemPrompt);
+            NotifyIfSlow(sendTask, null, () => Interlocked.Exchange(ref slowNoticeFlag, 1) == 0);
+            var response = await sendTask;
             response = TextUtilities.TrimTrailingNewlines(response);
             if (!string.IsNullOrWhiteSpace(response))
             {
@@ -755,11 +957,14 @@ public partial class App : global::Avalonia.Application
             var dlg = new ResponseDialog { ResponseText = "Testing backend…" };
             _ = dlg.ShowDialog(GetOwnerWindow());
             _tray?.ShowPending();
+            var slowNoticeFlag = 0;
             try
             {
                 using var llm = new LlmService();
                 _tray?.StartBusy();
-                var text = await llm.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.", systemPrompt: ComposeSystemPrompt());
+                var sendTask = llm.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.", systemPrompt: ComposeSystemPrompt());
+                NotifyIfSlow(sendTask, dlg, () => Interlocked.Exchange(ref slowNoticeFlag, 1) == 0);
+                var text = await sendTask;
                 dlg.ResponseText = string.IsNullOrWhiteSpace(text) ? "(no response)" : text;
             }
             catch (Exception ex)
@@ -855,6 +1060,29 @@ public partial class App : global::Avalonia.Application
         };
         _hiddenWindow = hidden;
         return hidden;
+    }
+
+    private void NotifyIfSlow(Task monitoredTask, ResponseDialog? dialog, Func<bool> shouldNotify)
+    {
+        SlowOperationNotifier.NotifyIfSlow(monitoredTask, async () =>
+        {
+            if (!shouldNotify())
+            {
+                return;
+            }
+
+            if (dialog is not null)
+            {
+                await SlowOperationNotifier.ShowBusyMessageAsync(dialog);
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                var popup = new ResponseDialog { ResponseText = SlowOperationNotifier.BusyServerMessage };
+                _ = popup.ShowDialog(GetOwnerWindow());
+            });
+        });
     }
 
     private async System.Threading.Tasks.Task ShowMessageAsync(string message)

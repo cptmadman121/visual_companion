@@ -54,7 +54,9 @@ public partial class SettingsView : global::Avalonia.Controls.UserControl
         {
             using var svc = new LlmService();
             var store = new ConfigurationStore();
-            var text = await svc.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.", systemPrompt: ComposeSystemPrompt(store.Current.Language));
+            var sendTask = svc.SendAsync("TrayVisionPrompt Backend-Test: Bitte antworte mit 'Bereit'.", systemPrompt: ComposeSystemPrompt(store.Current.Language));
+            SlowOperationNotifier.NotifyIfSlow(sendTask, () => SlowOperationNotifier.ShowBusyMessageAsync(dlg));
+            var text = await sendTask;
             dlg.ResponseText = string.IsNullOrWhiteSpace(text) ? "(no response)" : text;
         }
         catch (Exception ex)

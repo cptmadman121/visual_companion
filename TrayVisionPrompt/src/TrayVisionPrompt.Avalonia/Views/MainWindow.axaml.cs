@@ -82,7 +82,9 @@ public partial class MainWindow : Window
         try
         {
             using var llm = new LlmService();
-            var text = await llm.SendAsync(string.Join("\n", vm.Messages), systemPrompt: SystemPromptBuilder.Build(_store.Current.Language));
+            var sendTask = llm.SendAsync(string.Join("\n", vm.Messages), systemPrompt: SystemPromptBuilder.Build(_store.Current.Language));
+            SlowOperationNotifier.NotifyIfSlow(sendTask, () => SlowOperationNotifier.ShowBusyMessageAsync(dlg));
+            var text = await sendTask;
             dlg.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
             vm.Messages.Add($"Assistant: {text}");
             _transcript.Append($"Assistant: {text}");
@@ -132,7 +134,9 @@ public partial class MainWindow : Window
                 : $"{ask.Instruction}\n\nOCR-Fallback:\n{ocr}";
 
             using var llm = new LlmService();
-            var text = await llm.SendAsync(prompt, img, forceVision: true, systemPrompt: SystemPromptBuilder.Build(_store.Current.Language));
+            var sendTask = llm.SendAsync(prompt, img, forceVision: true, systemPrompt: SystemPromptBuilder.Build(_store.Current.Language));
+            SlowOperationNotifier.NotifyIfSlow(sendTask, () => SlowOperationNotifier.ShowBusyMessageAsync(resp));
+            var text = await sendTask;
             resp.ResponseText = string.IsNullOrWhiteSpace(text) ? "(empty response)" : text;
 
             if (DataContext is MainViewModel vm)
