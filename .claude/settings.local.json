@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(dir /b \"c:\\\\LLM Tests\\\\visual_companion\\\\TrayVisionPrompt\\\\src\")"
+    ]
+  }
+}
