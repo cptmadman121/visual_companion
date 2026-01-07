@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -7,24 +8,30 @@ using System.Diagnostics;
 
 namespace TrayVisionPrompt.Avalonia.Services;
 
-public sealed class ForegroundTextService
+public sealed class ForegroundTextService : IDisposable
 {
     private readonly ClipboardLogService? _log;
     private readonly object _faultSync = new();
     // Safety timeout so stuck clipboard calls do not stall the app forever
     private readonly TimeSpan _staTimeout = TimeSpan.FromSeconds(5);
+    private readonly StaClipboardWorker _clipboardWorker;
+    private readonly object _workerSync = new();
+    private readonly TimeSpan _workerRestartCooldown = TimeSpan.FromSeconds(30);
+    private DateTimeOffset _lastWorkerRestart = DateTimeOffset.MinValue;
     private int _consecutiveClipboardFaults;
+    private bool _disposed;
 
     public event EventHandler? ClipboardFaulted;
 
     public ForegroundTextService(ClipboardLogService? logService = null)
     {
         _log = logService;
+        _clipboardWorker = new StaClipboardWorker(_log);
     }
 
     public async Task<TextCaptureResult> CaptureAsync(CancellationToken cancellationToken = default)
     {
-        return await RunStaAsync(() => CaptureInternal(cancellationToken, _log, this), nameof(CaptureAsync), TextCaptureResult.Empty);
+        return await RunStaAsync(() => CaptureInternal(cancellationToken, _log, this), nameof(CaptureAsync), TextCaptureResult.Empty, cancellationToken);
     }
 
     public async Task ReplaceSelectionAsync(IntPtr windowHandle, string replacement, CancellationToken cancellationToken = default)
@@ -49,41 +56,34 @@ public sealed class ForegroundTextService
     {
         return await RunStaAsync(() =>
         {
-            try
+            if (!TryGetClipboardTextDirect(out var text, _log, "GetClipboardTextAsync", this))
             {
-                var hasText = Clipboard.ContainsText();
-                var text = hasText ? Clipboard.GetText() : null;
-                _log?.Log(hasText
-                    ? $"GetClipboardTextAsync: retrieved {text?.Length ?? 0} characters"
-                    : "GetClipboardTextAsync: clipboard does not contain text");
-                ClearClipboardFaults();
-                return text;
-            }
-            catch (Exception ex)
-            {
-                _log?.Log($"GetClipboardTextAsync failed: {ex.Message}");
-                HandleClipboardFault($"GetClipboardTextAsync failed: {ex.Message}");
+                _log?.Log("GetClipboardTextAsync: clipboard access failed");
                 return null;
             }
-        }, nameof(GetClipboardTextAsync), (string?)null);
+
+            if (text is null)
+            {
+                _log?.Log("GetClipboardTextAsync: clipboard does not contain text");
+                return null;
+            }
+
+            _log?.Log($"GetClipboardTextAsync: retrieved {text.Length} characters");
+            return text;
+        }, nameof(GetClipboardTextAsync), (string?)null, cancellationToken);
     }
 
     public async Task<bool> ProbeClipboardAsync()
     {
         return await RunStaAsync(() =>
         {
-            try
+            if (TryProbeClipboard(_log, "ProbeClipboardAsync", this))
             {
-                _ = Clipboard.ContainsText();
-                ClearClipboardFaults();
                 return true;
             }
-            catch (Exception ex)
-            {
-                _log?.Log($"ProbeClipboardAsync failed: {ex.Message}");
-                HandleClipboardFault($"ProbeClipboardAsync failed: {ex.Message}");
-                return false;
-            }
+
+            _log?.Log("ProbeClipboardAsync failed");
+            return false;
         }, nameof(ProbeClipboardAsync), false);
     }
 
@@ -93,14 +93,12 @@ public sealed class ForegroundTextService
         {
             IDataObject? originalData = null;
             string? originalText = null;
-            try
+            _ = TryGetClipboardTextDirect(out originalText, _log, "SelfTestClipboardAsync: read original text", this, trackFaults: false);
+
+            if (originalData == null && string.IsNullOrEmpty(originalText))
             {
-                originalData = Clipboard.GetDataObject();
-                originalText = TryGetText(originalData);
-            }
-            catch (Exception ex)
-            {
-                _log?.Log($"SelfTestClipboardAsync: unable to read original clipboard: {ex.Message}");
+                _log?.Log("SelfTestClipboardAsync: skipped (unable to snapshot clipboard contents)");
+                return true;
             }
 
             var sentinel = $"TVP-CLIPBOARD-SELFTEST-{Guid.NewGuid():N}";
@@ -113,7 +111,12 @@ public sealed class ForegroundTextService
 
             try
             {
-                var roundTrip = Clipboard.GetText();
+                if (!TryGetClipboardTextDirect(out var roundTrip, _log, "SelfTestClipboardAsync: read sentinel", this))
+                {
+                    _log?.Log("SelfTestClipboardAsync: failed to read clipboard round-trip");
+                    return false;
+                }
+
                 var success = string.Equals(roundTrip, sentinel, StringComparison.Ordinal);
                 _log?.Log(success
                     ? "SelfTestClipboardAsync: clipboard round-trip succeeded"
@@ -123,12 +126,6 @@ public sealed class ForegroundTextService
                     HandleClipboardFault("SelfTestClipboardAsync: clipboard readback mismatch");
                 }
                 return success;
-            }
-            catch (Exception ex)
-            {
-                _log?.Log($"SelfTestClipboardAsync failed: {ex.Message}");
-                HandleClipboardFault($"SelfTestClipboardAsync failed: {ex.Message}");
-                return false;
             }
             finally
             {
@@ -145,7 +142,7 @@ public sealed class ForegroundTextService
             var isRocket = IsRocketChatWindow(hwnd);
             _log?.Log($"IsRocketChatForegroundAsync: window=0x{hwnd.ToInt64():X} rocketChat={isRocket}");
             return isRocket;
-        }, nameof(IsRocketChatForegroundAsync), false);
+        }, nameof(IsRocketChatForegroundAsync), false, cancellationToken);
     }
 
     private static TextCaptureResult CaptureInternal(CancellationToken cancellationToken, ClipboardLogService? log, ForegroundTextService? owner)
@@ -159,20 +156,19 @@ public sealed class ForegroundTextService
 
         log?.Log($"CaptureInternal: starting for window 0x{foreground.ToInt64():X}");
         IDataObject? originalData = null;
-        try
-        {
-            originalData = Clipboard.GetDataObject();
-        }
-        catch
+        if (!TryGetClipboardDataObject(out originalData, log, "CaptureInternal: read original clipboard", owner, trackFaults: false))
         {
             // unable to read clipboard; continue without original data
             log?.Log("CaptureInternal: unable to read original clipboard");
         }
-
         var originalText = TryGetText(originalData);
+        if (string.IsNullOrEmpty(originalText))
+        {
+            _ = TryGetClipboardTextDirect(out originalText, log, "CaptureInternal: read original text", owner, trackFaults: false);
+        }
         var sentinel = Guid.NewGuid().ToString("N");
 
-        if (!TrySetClipboard(() => Clipboard.SetDataObject(sentinel, true), log, "CaptureInternal: set sentinel", owner))
+        if (!TrySetClipboard(() => Clipboard.SetText(sentinel), log, "CaptureInternal: set sentinel", owner))
         {
             log?.Log("CaptureInternal: failed to set sentinel");
             return TextCaptureResult.Empty;
@@ -191,10 +187,8 @@ public sealed class ForegroundTextService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            try
+            if (TryGetClipboardTextSnapshot(out var maybe))
             {
-                var data = Clipboard.GetDataObject();
-                var maybe = TryGetText(data);
                 if (!string.IsNullOrEmpty(maybe) && !string.Equals(maybe, sentinel, StringComparison.Ordinal))
                 {
                     capturedText = maybe;
@@ -202,7 +196,6 @@ public sealed class ForegroundTextService
                     break;
                 }
             }
-            catch { /* ignore clipboard probe errors */ }
 
             // Re-issue copy occasionally in case the target app needs a user gesture
             if (Environment.TickCount64 - nudgedAt > 150)
@@ -245,14 +238,15 @@ public sealed class ForegroundTextService
         }
 
         IDataObject? originalData = null;
-        try
-        {
-            originalData = Clipboard.GetDataObject();
-        }
-        catch
+        if (!TryGetClipboardDataObject(out originalData, log, "ReplaceSelectionInternal: read original clipboard", owner, trackFaults: false))
         {
             // ignore clipboard retrieval errors
             log?.Log("ReplaceSelectionInternal: unable to read original clipboard");
+        }
+        var originalText = TryGetText(originalData);
+        if (string.IsNullOrEmpty(originalText))
+        {
+            _ = TryGetClipboardTextDirect(out originalText, log, "ReplaceSelectionInternal: read original text", owner, trackFaults: false);
         }
 
         if (!TrySetClipboard(() => Clipboard.SetText(NormalizeNewlinesToWindows(replacement)), log, "ReplaceSelectionInternal: set replacement text", owner))
@@ -281,7 +275,7 @@ public sealed class ForegroundTextService
         var pasteDelay = isChromiumLike ? 2000 : 900;
         Thread.Sleep(pasteDelay);
 
-        RestoreClipboard(originalData, log, replacement, owner);
+        RestoreClipboard(originalData, log, originalText ?? replacement, owner);
     }
 
     private static string NormalizeNewlinesToWindows(string text)
@@ -291,69 +285,66 @@ public sealed class ForegroundTextService
         return t.Replace("\n", "\r\n");
     }
 
-    private async Task<T> RunStaAsync<T>(Func<T> action, string context, T timeoutResult)
+    private void RestartClipboardWorker(string reason)
     {
-        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        if (_disposed)
         {
-            try
-            {
-                var result = action();
-                tcs.SetResult(result);
-            }
-            catch (Exception ex)
-            {
-                tcs.SetException(ex);
-            }
-        })
-        {
-            IsBackground = true
-        };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
+            return;
+        }
 
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(_staTimeout)).ConfigureAwait(false);
-        if (completed == tcs.Task)
+        lock (_workerSync)
         {
-            return await tcs.Task.ConfigureAwait(false);
+            var now = DateTimeOffset.Now;
+            if (now - _lastWorkerRestart < _workerRestartCooldown)
+            {
+                _log?.Log($"Clipboard STA restart skipped (cooldown): {reason}");
+                return;
+            }
+
+            _lastWorkerRestart = now;
+            _clipboardWorker.Restart(reason);
+        }
+    }
+
+    private async Task<T> RunStaAsync<T>(Func<T> action, string context, T timeoutResult, CancellationToken cancellationToken = default)
+    {
+        if (_disposed)
+        {
+            return timeoutResult;
+        }
+
+        var start = Stopwatch.StartNew();
+        _log?.Log($"{context}: queued");
+        var work = _clipboardWorker.Enqueue(action, cancellationToken, context);
+        var timeoutTask = Task.Delay(_staTimeout, cancellationToken);
+        var completed = await Task.WhenAny(work.Task, timeoutTask).ConfigureAwait(false);
+        if (completed == work.Task)
+        {
+            var result = await work.Task.ConfigureAwait(false);
+            _log?.Log($"{context}: completed in {start.ElapsedMilliseconds} ms");
+            return result;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            work.Cancel();
+            throw new OperationCanceledException(cancellationToken);
         }
 
         _log?.Log($"{context}: timed out after {_staTimeout.TotalMilliseconds:0} ms");
         HandleClipboardFault($"{context}: timed out");
+        work.Cancel();
+        RestartClipboardWorker($"{context} timed out");
         return timeoutResult;
     }
 
     private async Task RunStaAsync(Action action, string context, CancellationToken cancellationToken)
     {
-        var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
+        await RunStaAsync(() =>
         {
-            try
-            {
-                action();
-                tcs.SetResult(null);
-            }
-            catch (Exception ex)
-            {
-                tcs.SetException(ex);
-            }
-        })
-        {
-            IsBackground = true
-        };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-
-        using var _ = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(_staTimeout)).ConfigureAwait(false);
-        if (completed == tcs.Task)
-        {
-            await tcs.Task.ConfigureAwait(false);
-            return;
-        }
-
-        _log?.Log($"{context}: timed out after {_staTimeout.TotalMilliseconds:0} ms");
-        HandleClipboardFault($"{context}: timed out");
+            action();
+            return true;
+        }, context, true, cancellationToken).ConfigureAwait(false);
     }
 
     private static void SendCopy(IntPtr windowHandle)
@@ -585,34 +576,210 @@ public sealed class ForegroundTextService
 
     private static void RestoreClipboard(IDataObject? data, ClipboardLogService? log, string? fallbackText = null, ForegroundTextService? owner = null)
     {
-        if (data == null)
+        var originalText = TryGetText(data);
+        var restoreText = !string.IsNullOrWhiteSpace(originalText)
+            ? originalText
+            : fallbackText;
+
+        if (string.IsNullOrWhiteSpace(restoreText))
         {
-            // If we could not read the previous clipboard contents, prefer to
-            // preserve the current/fallback data instead of wiping the clipboard.
-            if (!string.IsNullOrWhiteSpace(fallbackText))
-            {
-                TrySetClipboard(
-                    () => Clipboard.SetText(NormalizeNewlinesToWindows(fallbackText)),
-                    log,
-                    "RestoreClipboard: preserve fallback clipboard text",
-                    owner);
-                log?.Log("RestoreClipboard: original clipboard unavailable; leaving fallback text in place");
-            }
-            else
-            {
-                log?.Log("RestoreClipboard: no original clipboard data; leaving clipboard unchanged");
-            }
+            log?.Log("RestoreClipboard: no text available; leaving clipboard unchanged");
             return;
         }
 
-        if (TrySetClipboard(() => Clipboard.SetDataObject(data, true), log, "RestoreClipboard: restore data", owner))
+        if (!string.IsNullOrWhiteSpace(originalText))
         {
-            log?.Log("RestoreClipboard: restored previous clipboard data");
+            log?.Log("RestoreClipboard: restoring text snapshot");
         }
         else
         {
-            log?.Log("RestoreClipboard: failed to restore clipboard data");
+            log?.Log("RestoreClipboard: original clipboard had no text; restoring fallback text");
         }
+
+        if (TrySetClipboard(() => Clipboard.SetText(NormalizeNewlinesToWindows(restoreText)), log, "RestoreClipboard: restore text", owner))
+        {
+            log?.Log("RestoreClipboard: restored clipboard text");
+        }
+        else
+        {
+            log?.Log("RestoreClipboard: failed to restore clipboard text");
+        }
+    }
+
+    private static bool TryProbeClipboard(ClipboardLogService? log, string context, ForegroundTextService? owner)
+    {
+        return TryCheckClipboardAccess(log, context, owner);
+    }
+
+    private static bool TryGetClipboardDataObject(
+        out IDataObject? data,
+        ClipboardLogService? log,
+        string context,
+        ForegroundTextService? owner,
+        bool trackFaults = true,
+        int attempts = 5,
+        int delayMs = 80)
+    {
+        data = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                data = Clipboard.GetDataObject();
+                if (trackFaults)
+                {
+                    owner?.ClearClipboardFaults();
+                }
+                if (attempt > 1)
+                {
+                    log?.Log($"{context}: succeeded on attempt {attempt}");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Log($"{context}: attempt {attempt} failed ({ex.Message})");
+                if (attempt < attempts && IsTransientClipboardException(ex))
+                {
+                    Thread.Sleep(ComputeBackoffDelay(delayMs, attempt));
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if (trackFaults)
+        {
+            owner?.HandleClipboardFault($"{context}: exhausted attempts");
+        }
+        return false;
+    }
+
+    private static bool TryCheckClipboardAccess(
+        ClipboardLogService? log,
+        string context,
+        ForegroundTextService? owner,
+        bool trackFaults = true,
+        int attempts = 5,
+        int delayMs = 80)
+    {
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                _ = Clipboard.ContainsText();
+                if (trackFaults)
+                {
+                    owner?.ClearClipboardFaults();
+                }
+                if (attempt > 1)
+                {
+                    log?.Log($"{context}: succeeded on attempt {attempt}");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Log($"{context}: attempt {attempt} failed ({ex.Message})");
+                if (attempt < attempts && IsTransientClipboardException(ex))
+                {
+                    Thread.Sleep(ComputeBackoffDelay(delayMs, attempt));
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if (trackFaults)
+        {
+            owner?.HandleClipboardFault($"{context}: exhausted attempts");
+        }
+        return false;
+    }
+
+    private static bool TryGetClipboardTextDirect(
+        out string? text,
+        ClipboardLogService? log,
+        string context,
+        ForegroundTextService? owner,
+        bool trackFaults = true,
+        int attempts = 5,
+        int delayMs = 80)
+    {
+        text = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                var hasText = Clipboard.ContainsText();
+                text = hasText ? Clipboard.GetText() : null;
+                if (trackFaults)
+                {
+                    owner?.ClearClipboardFaults();
+                }
+                if (attempt > 1)
+                {
+                    log?.Log($"{context}: succeeded on attempt {attempt}");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log?.Log($"{context}: attempt {attempt} failed ({ex.Message})");
+                if (attempt < attempts && IsTransientClipboardException(ex))
+                {
+                    Thread.Sleep(ComputeBackoffDelay(delayMs, attempt));
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if (trackFaults)
+        {
+            owner?.HandleClipboardFault($"{context}: exhausted attempts");
+        }
+        return false;
+    }
+
+    private static bool TryGetClipboardTextSnapshot(out string? text)
+    {
+        text = null;
+        try
+        {
+            var hasText = Clipboard.ContainsText();
+            text = hasText ? Clipboard.GetText() : null;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsTransientClipboardException(Exception ex)
+    {
+        if (ex is ExternalException)
+        {
+            return true;
+        }
+
+        if (ex is COMException comEx)
+        {
+            var hr = comEx.HResult;
+            return hr == unchecked((int)0x800401D0) ||
+                   hr == unchecked((int)0x800401D1) ||
+                   hr == unchecked((int)0x80010001) ||
+                   hr == unchecked((int)0x8001010A);
+        }
+
+        return false;
+    }
+
+    private static int ComputeBackoffDelay(int baseDelayMs, int attempt)
+    {
+        var delay = baseDelayMs + (attempt - 1) * 40;
+        return delay > 400 ? 400 : delay;
     }
 
     private static bool TrySetClipboard(Action action, ClipboardLogService? log, string context, ForegroundTextService? owner = null, int attempts = 6, int delayMs = 80)
@@ -632,10 +799,12 @@ public sealed class ForegroundTextService
             catch (Exception ex)
             {
                 log?.Log($"{context}: attempt {attempt} failed ({ex.Message})");
-                if (attempt < attempts)
+                if (attempt < attempts && IsTransientClipboardException(ex))
                 {
-                    Thread.Sleep(delayMs);
+                    Thread.Sleep(ComputeBackoffDelay(delayMs, attempt));
+                    continue;
                 }
+                break;
             }
         }
 
@@ -716,6 +885,12 @@ public sealed class ForegroundTextService
     [DllImport("user32.dll")]
     private static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
 
+    [DllImport("ole32.dll")]
+    private static extern int OleInitialize(IntPtr pvReserved);
+
+    [DllImport("ole32.dll")]
+    private static extern void OleUninitialize();
+
     private const int WM_COPY = 0x0301;
     private const int WM_PASTE = 0x0302;
 
@@ -765,6 +940,216 @@ public sealed class ForegroundTextService
         public IntPtr hwndMoveSize;
         public IntPtr hwndCaret;
         public RECT rcCaret;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _clipboardWorker.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    private sealed class StaClipboardWorker : IDisposable
+    {
+        private readonly ClipboardLogService? _log;
+        private readonly object _sync = new();
+        private BlockingCollection<WorkItem> _queue = new();
+        private Thread? _thread;
+        private int _generation;
+        private bool _disposed;
+        private readonly TimeSpan _shutdownTimeout = TimeSpan.FromSeconds(1.5);
+
+        public StaClipboardWorker(ClipboardLogService? log)
+        {
+            _log = log;
+            StartNewWorker("initial");
+        }
+
+        public WorkItem<T> Enqueue<T>(Func<T> action, CancellationToken cancellationToken, string context)
+        {
+            var work = new WorkItem<T>(action, cancellationToken, context, _log);
+            lock (_sync)
+            {
+                if (_disposed)
+                {
+                    work.Cancel();
+                    return work;
+                }
+
+                try
+                {
+                    _log?.Log($"Clipboard STA enqueue: {context} (queued={_queue.Count})");
+                    _queue.Add(work);
+                }
+                catch (InvalidOperationException)
+                {
+                    _log?.Log($"Clipboard STA enqueue failed: {context} (queue closed)");
+                    work.Cancel();
+                }
+            }
+            return work;
+        }
+
+        public void Restart(string reason)
+        {
+            lock (_sync)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                StartNewWorker(reason);
+            }
+        }
+
+        private void StartNewWorker(string reason)
+        {
+            var oldQueue = _queue;
+            var oldThread = _thread;
+            var generation = Interlocked.Increment(ref _generation);
+
+            _queue = new BlockingCollection<WorkItem>(new ConcurrentQueue<WorkItem>());
+            _thread = new Thread(() => RunWorkerLoop(_queue, generation))
+            {
+                IsBackground = true,
+                Name = $"ClipboardSTA-{generation}"
+            };
+            _thread.SetApartmentState(ApartmentState.STA);
+            _thread.Start();
+
+            oldQueue.CompleteAdding();
+            if (generation > 1)
+            {
+                _log?.Log($"Clipboard STA worker restarted: {reason}");
+            }
+
+            TryJoinThread(oldThread);
+        }
+
+        private void RunWorkerLoop(BlockingCollection<WorkItem> queue, int generation)
+        {
+            var hr = OleInitialize(IntPtr.Zero);
+            var oleInitialized = hr >= 0;
+            if (hr < 0)
+            {
+                _log?.Log($"Clipboard STA worker {generation}: OleInitialize failed (0x{hr:X8})");
+            }
+
+            try
+            {
+                _log?.Log($"Clipboard STA worker {generation}: started");
+                foreach (var item in queue.GetConsumingEnumerable())
+                {
+                    item.Execute();
+                }
+            }
+            catch (Exception ex)
+            {
+                _log?.Log($"Clipboard STA worker {generation} crashed: {ex.Message}");
+            }
+            finally
+            {
+                _log?.Log($"Clipboard STA worker {generation}: exiting");
+                if (oleInitialized)
+                {
+                    try { OleUninitialize(); } catch { }
+                }
+            }
+        }
+
+        private void TryJoinThread(Thread? thread)
+        {
+            if (thread == null)
+            {
+                return;
+            }
+
+            if (!thread.Join(_shutdownTimeout))
+            {
+                _log?.Log("Clipboard STA worker shutdown timed out");
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                _queue.CompleteAdding();
+            }
+
+            TryJoinThread(_thread);
+            GC.SuppressFinalize(this);
+        }
+
+        public abstract class WorkItem
+        {
+            public abstract void Execute();
+            public abstract void Cancel();
+        }
+
+        public sealed class WorkItem<T> : WorkItem
+        {
+            private readonly Func<T> _action;
+            private readonly TaskCompletionSource<T> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly CancellationToken _cancellationToken;
+            private readonly string _context;
+            private readonly ClipboardLogService? _log;
+
+            public WorkItem(Func<T> action, CancellationToken cancellationToken, string context, ClipboardLogService? log)
+            {
+                _action = action;
+                _cancellationToken = cancellationToken;
+                _context = context;
+                _log = log;
+            }
+
+            public Task<T> Task => _tcs.Task;
+
+            public override void Execute()
+            {
+                if (_cancellationToken.IsCancellationRequested)
+                {
+                    _tcs.TrySetCanceled(_cancellationToken);
+                    return;
+                }
+
+                try
+                {
+                    var sw = Stopwatch.StartNew();
+                    var result = _action();
+                    _tcs.TrySetResult(result);
+                    _log?.Log($"{_context}: STA action completed in {sw.ElapsedMilliseconds} ms");
+                }
+                catch (OperationCanceledException oce)
+                {
+                    _log?.Log($"{_context}: STA action canceled");
+                    _tcs.TrySetCanceled(oce.CancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _log?.Log($"{_context}: STA worker exception ({ex.Message})");
+                    _tcs.TrySetException(ex);
+                }
+            }
+
+            public override void Cancel()
+            {
+                _tcs.TrySetCanceled();
+            }
+        }
+
     }
 
     private void HandleClipboardFault(string reason)

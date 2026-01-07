@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -15,11 +16,14 @@ public class LlmService : IDisposable
     private readonly ConfigurationStore _store = new();
     private readonly HttpClient _httpClient;
     private const int MaxRequestTimeoutMs = 180_000;
+    private static readonly object HttpClientSync = new();
+    private static HttpClient? _sharedClient;
+    private static string? _sharedClientKey;
 
     public LlmService()
     {
         _store.Load();
-        _httpClient = CreateHttpClient(_store.Current);
+        _httpClient = GetOrCreateHttpClient(_store.Current);
     }
 
     public async Task<string> SendAsync(string prompt, string? imageBase64 = null, CancellationToken cancellationToken = default, bool forceVision = false, string? systemPrompt = null)
@@ -101,16 +105,87 @@ public class LlmService : IDisposable
         return ParseResponse(document);
     }
 
-    private static HttpClient CreateHttpClient(AppConfiguration cfg)
+    public async Task WarmupAsync(CancellationToken cancellationToken = default)
     {
-        var handler = new HttpClientHandler();
-        if (!string.IsNullOrWhiteSpace(cfg.Proxy))
+        var cfg = _store.Current;
+        var endpoint = NormalizeEndpoint(cfg.Endpoint);
+
+        var messages = new List<Dictionary<string, object?>>
         {
-            handler.Proxy = new System.Net.WebProxy(cfg.Proxy);
+            new()
+            {
+                ["role"] = "user",
+                ["content"] = new[]
+                {
+                    new Dictionary<string, object?>
+                    {
+                        ["type"] = "text",
+                        ["text"] = "ping"
+                    }
+                }
+            }
+        };
+
+        var payload = new
+        {
+            model = cfg.Model,
+            temperature = 0,
+            max_tokens = 1,
+            messages
+        };
+
+        var timeout = Math.Min(10_000, CalculateTimeout("ping", cfg.RequestTimeoutMs));
+        using var cts = CreateLinkedCts(timeout, cancellationToken);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = JsonContent.Create(payload)
+        };
+        request.Headers.Add("Accept", "application/json");
+
+        var response = await _httpClient.SendAsync(request, cts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private static HttpClient GetOrCreateHttpClient(AppConfiguration cfg)
+    {
+        var effectiveTimeout = CalculateHttpClientTimeout(cfg.RequestTimeoutMs);
+        var proxy = cfg.Proxy?.Trim();
+        var key = $"{proxy}|{effectiveTimeout}";
+
+        lock (HttpClientSync)
+        {
+            if (_sharedClient is not null && string.Equals(_sharedClientKey, key, StringComparison.Ordinal))
+            {
+                return _sharedClient;
+            }
+
+            _sharedClient?.Dispose();
+            _sharedClient = CreateHttpClient(proxy, effectiveTimeout);
+            _sharedClientKey = key;
+            return _sharedClient;
+        }
+    }
+
+    private static HttpClient CreateHttpClient(string? proxy, int effectiveTimeout)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            AutomaticDecompression = DecompressionMethods.All,
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            PooledConnectionLifetime = TimeSpan.FromMinutes(10),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+            // Avoid expensive system proxy auto-discovery unless a proxy is configured explicitly.
+            UseProxy = false
+        };
+
+        if (!string.IsNullOrWhiteSpace(proxy))
+        {
+            handler.Proxy = new System.Net.WebProxy(proxy);
             handler.UseProxy = true;
         }
-        var effectiveTimeout = Math.Max(60_000, Math.Min(MaxRequestTimeoutMs, Math.Max(1_000, cfg.RequestTimeoutMs)));
-        return new HttpClient(handler)
+
+        return new HttpClient(handler, disposeHandler: true)
         {
             Timeout = TimeSpan.FromMilliseconds(effectiveTimeout)
         };
@@ -185,6 +260,11 @@ public class LlmService : IDisposable
         return cts;
     }
 
+    private static int CalculateHttpClientTimeout(int configuredTimeout)
+    {
+        return Math.Max(60_000, Math.Min(MaxRequestTimeoutMs, Math.Max(1_000, configuredTimeout)));
+    }
+
     private static int CalculateTimeout(string prompt, int baseTimeout)
     {
         var effectiveBase = Math.Max(45_000, baseTimeout);
@@ -195,6 +275,6 @@ public class LlmService : IDisposable
 
     public void Dispose()
     {
-        _httpClient.Dispose();
+        // HttpClient is shared and cached; disposing here would tear down active callers.
     }
 }
