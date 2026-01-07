@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:DeskLLM.Avalonia.ViewModels"
+        xmlns:views="clr-namespace:DeskLLM.Avalonia.Views"
+        x:Class="DeskLLM.Avalonia.Views.SettingsWindow"
+        Width="560" Height="640" Title="Settings"
+        WindowStartupLocation="CenterOwner"
+        x:CompileBindings="False">
+  <Design.DataContext>
+    <vm:SettingsViewModel />
+  </Design.DataContext>
+  <Border Classes="card" Margin="16">
+    <views:SettingsView />
+  </Border>
+</Window>
+

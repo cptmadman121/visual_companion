@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeskLLM.Avalonia.Views.TutorialHintWindow"
+        Width="360"
+        SizeToContent="WidthAndHeight"
+        CanResize="False"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        Topmost="True"
+        TransparencyLevelHint="Blur"
+        Background="Transparent"
+        WindowStartupLocation="Manual">
+  <Border Background="#F01D1D26"
+          BorderBrush="{StaticResource BrushBrandPrimary}"
+          BorderThickness="1.5"
+          CornerRadius="14"
+          Padding="18"
+          MaxWidth="360">
+    <StackPanel Spacing="12">
+      <TextBlock x:Name="StepTextBlock"
+                 Classes="caption"
+                 Text="Step"
+                 Foreground="{StaticResource BrushOnSurfaceDim}"/>
+      <TextBlock x:Name="TitleBlock"
+                 Classes="h2"
+                 Text="Tutorial"
+                 TextWrapping="Wrap"/>
+      <TextBlock x:Name="MessageBlock"
+                 Text=""
+                 TextWrapping="Wrap"
+                 MaxWidth="320"
+                 Foreground="{StaticResource BrushOnSurface}"/>
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="10">
+        <Button x:Name="SkipButton"
+                Content="Skip"
+                Click="OnSkip"
+                BorderThickness="0"
+                Background="Transparent"
+                Foreground="{StaticResource BrushOnSurface}"/>
+        <Button x:Name="NextButton"
+                Classes="primary"
+                Content="Next"
+                Click="OnNext"/>
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

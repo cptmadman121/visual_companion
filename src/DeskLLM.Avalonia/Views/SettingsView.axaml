@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="DeskLLM.Avalonia.Views.SettingsView"
+             x:CompileBindings="False">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <TextBlock Grid.Row="0" Classes="h1" Text="Settings" Margin="8"/>
+    <TabControl Grid.Row="1" Margin="8">
+      <TabItem Header="General">
+        <ScrollViewer>
+          <StackPanel Spacing="8">
+            <TextBlock Classes="caption" Text="Language"/>
+            <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Icon"/>
+            <ComboBox ItemsSource="{Binding AvailableIcons}" SelectedItem="{Binding SelectedIcon, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Backend"/>
+            <ComboBox ItemsSource="{Binding Backends}" SelectedItem="{Binding Backend, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Endpoint"/>
+            <TextBox Text="{Binding Endpoint, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Model"/>
+            <TextBox Text="{Binding Model, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Timeout (ms)"/>
+            <TextBox Text="{Binding TimeoutMs, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Max Tokens"/>
+            <TextBox Text="{Binding MaxTokens, Mode=TwoWay}"/>
+            <TextBlock Classes="caption" Text="Temperature"/>
+            <TextBox Text="{Binding Temperature, Mode=TwoWay}"/>
+            <CheckBox Content="Use Vision" IsChecked="{Binding UseVision, Mode=TwoWay}" />
+            <CheckBox Content="OCR Fallback" IsChecked="{Binding UseOcrFallback, Mode=TwoWay}" />
+            <TextBlock Classes="caption" Text="Proxy"/>
+            <TextBox Text="{Binding Proxy, Mode=TwoWay}"/>
+            <CheckBox Content="Enable clipboard debug logging" IsChecked="{Binding EnableClipboardLogging, Mode=TwoWay}" />
+            <TextBlock Classes="caption" Text="Clipboard log file"/>
+            <TextBox Text="{Binding ClipboardLogPath}" IsReadOnly="True"/>
+            <CheckBox Content="Keep conversation transcripts" IsChecked="{Binding KeepTranscripts, Mode=TwoWay}" />
+            <TextBlock Classes="caption" Text="Transcript folder"/>
+            <TextBox Text="{Binding TranscriptsPath}" IsReadOnly="True"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="Prompts">
+        <ScrollViewer>
+          <StackPanel Spacing="8">
+            <TextBlock Classes="caption" Text="Prompts"/>
+            <ListBox ItemsSource="{Binding Prompts}" SelectedItem="{Binding SelectedPrompt, Mode=TwoWay}" Height="140">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Name}"/>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+              <Button Content="Add" Command="{Binding AddPromptCommand}"/>
+              <Button Content="Remove" Command="{Binding RemovePromptCommand}"/>
+            </StackPanel>
+
+            <TextBlock Classes="caption" Text="Name"/>
+            <TextBox Text="{Binding SelectedPrompt.Name, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Hotkey"/>
+            <TextBox Text="{Binding SelectedPrompt.Hotkey, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Activation"/>
+            <ComboBox ItemsSource="{Binding ActivationModes}" SelectedItem="{Binding SelectedPrompt.Activation, Mode=TwoWay}"/>
+
+            <CheckBox Content="Show popup dialog for results" IsChecked="{Binding SelectedPrompt.ShowResponseDialog, Mode=TwoWay}"/>
+
+            <TextBlock Classes="caption" Text="Prompt"/>
+            <TextBox AcceptsReturn="True" TextWrapping="Wrap" Height="120" Text="{Binding SelectedPrompt.Prompt, Mode=TwoWay}"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="8,0,8,8">
+      <Button Content="Test Backend" Click="OnTest"/>
+      <Button Content="Cancel" Click="OnCancel"/>
+      <Button Classes="primary" Content="Save" Click="OnSave"/>
+    </StackPanel>
+  </Grid>
+</UserControl>

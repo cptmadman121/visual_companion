@@ -1,10 +1,75 @@
 {
   "manifest_version": 3,
-  "name": "TrayVisionPrompt",
+  "name": "deskLLM Companion",
   "version": "0.1.0",
-  "description": "Send selected text to TrayVisionPrompt and replace it with the response.",
-  "permissions": ["contextMenus", "activeTab", "scripting"],
-  "host_permissions": ["http://127.0.0.1:27124/*"],
-  "background": { "service_worker": "background.js" }
+  "description": "deskLLM as a Chrome extension: hotkeys, context menu prompts, and a conversation UI powered by your local or remote LLM.",
+  "action": {
+    "default_title": "deskLLM",
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icon.png",
+    "32": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "clipboardWrite",
+    "tabCapture"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "commands": {
+    "proofread": {
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      },
+      "description": "Proofread selection with deskLLM"
+    },
+    "translate": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Translate selection with deskLLM"
+    },
+    "anonymize": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "Anonymize selection with deskLLM"
+    },
+    "open-panel": {
+      "suggested_key": {
+        "default": "Alt+Shift+L"
+      },
+      "description": "Open the deskLLM panel"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "contentScript.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
 }
-

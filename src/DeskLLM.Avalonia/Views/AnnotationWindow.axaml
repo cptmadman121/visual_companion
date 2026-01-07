@@ -1,0 +1,20 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeskLLM.Avalonia.Views.AnnotationWindow"
+        SystemDecorations="None"
+        TransparencyLevelHint="Blur"
+        Background="#66000000" Topmost="True"
+        ShowInTaskbar="False"
+        Title="Annotation">
+  <Grid>
+    <Canvas x:Name="SelectionCanvas" ZIndex="1">
+      <Rectangle x:Name="SelectionRectangle"
+                 Stroke="{StaticResource BrushBrandAccent}"
+                 StrokeThickness="2"
+                 Fill="#2200FF00"
+                 IsVisible="False"/>
+    </Canvas>
+
+    <Canvas x:Name="ToolbarCanvas" ZIndex="2"/>
+  </Grid>
+</Window>
